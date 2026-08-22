@@ -1,0 +1,21 @@
+{
+  "name": "Rust Custom with RTK & Caveman",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "latest"
+    },
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
+  },
+  "remoteUser": "vscode",
+  "mounts": [
+    "source=claude-code-config,target=/home/vscode/.claude,type=volume"
+  ],
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude/"
+  },
+  // Runs as 'vscode' user at runtime to configure hooks/skills and bootstrap the local Postgres role+db
+  "postCreateCommand": "sudo chown -R vscode:vscode /home/vscode/.claude && rtk init -g --auto-patch"
+}

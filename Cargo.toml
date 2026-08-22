@@ -1,0 +1,18 @@
+[package]
+name = "sysml-check"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.65"
+description = "Parseur et vérificateur de la notation textuelle SysML v2 (KerML). Zéro dépendance."
+license = "MIT"
+
+[[bin]]
+name = "sysml-check"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
