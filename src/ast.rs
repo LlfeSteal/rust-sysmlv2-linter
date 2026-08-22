@@ -142,6 +142,7 @@ pub enum RefCtx {
     About,
     ImportTarget,
     AliasTarget,
+    ExposeTarget,
     Annotation,
     Other,
 }
@@ -162,6 +163,7 @@ impl RefCtx {
             RefCtx::About => "about",
             RefCtx::ImportTarget => "importTarget",
             RefCtx::AliasTarget => "aliasTarget",
+            RefCtx::ExposeTarget => "exposeTarget",
             RefCtx::Annotation => "annotation",
             RefCtx::Other => "other",
         }

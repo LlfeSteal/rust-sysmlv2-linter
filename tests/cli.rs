@@ -156,6 +156,11 @@ fn valid_coverage_audit_fixes_is_clean() {
 }
 
 #[test]
+fn valid_coverage_audit_low_fixes_is_clean() {
+    assert_ok(&format!("{}coverage_audit_low_fixes.sysml", VALID_DIR));
+}
+
+#[test]
 fn example_drone_is_clean() {
     assert_ok("examples/drone.sysml");
 }
@@ -245,6 +250,14 @@ fn e200_unresolved_name() {
 #[test]
 fn e201_duplicate_name() {
     assert_has(&format!("{}e201_duplicate_name.sysml", INVALID_DIR), "E201");
+}
+
+#[test]
+fn e201_shadows_inherited_member() {
+    assert_has(
+        &format!("{}e201_shadows_inherited_member.sysml", INVALID_DIR),
+        "E201",
+    );
 }
 
 #[test]
@@ -450,6 +463,13 @@ fn w312_kerml_only_keyword_requires_pedantic() {
         "feature + namespace + specialization + subclassification : {}",
         out
     );
+}
+
+#[test]
+fn w313_public_import_at_top_level_requires_pedantic() {
+    let path = format!("{}w313_public_import_at_top_level.sysml", INVALID_DIR);
+    assert_absent_without_pedantic(&path, "W313");
+    assert_has_pedantic(&path, "W313");
 }
 
 // --------------------------------------------------------------------------

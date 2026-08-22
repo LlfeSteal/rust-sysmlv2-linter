@@ -551,6 +551,12 @@ impl Parser {
             self.bump();
             kw = "library package".to_string();
         }
+        // `succession flow ...` : un flux implicitement séquencé — reste
+        // classé comme un `flow` (dernier mot), voir `ast::classify`.
+        if kw == "succession" && self.at_kw("flow") {
+            self.bump();
+            kw = "succession flow".to_string();
+        }
 
         let mut is_def = false;
         if self.at_kw("def") {
@@ -616,7 +622,11 @@ impl Parser {
                 if is_relationship_kw(&kw, is_def) {
                     self.parse_relationship_tail(&mut node, depth);
                 } else if !is_def && is_blob_kw(&kw) {
-                    let base = RefCtx::Other;
+                    let base = if kw == "expose" {
+                        RefCtx::ExposeTarget
+                    } else {
+                        RefCtx::Other
+                    };
                     self.parse_blob(&mut node, base);
                     self.finish_member(&mut node, depth);
                 } else {
@@ -1166,10 +1176,18 @@ impl Parser {
 
     fn parse_doc_tail(&mut self, node: &mut Node) {
         let ct = self.cur().clone();
-        if ct.kind == TokKind::Ident && (ct.quoted || !is_member_kw(&ct.text)) {
+        if ct.kind == TokKind::Ident && !ct.is_ident("locale") && (ct.quoted || !is_member_kw(&ct.text)) {
             let t = self.bump();
             node.name = Some(Spanned::new(t.text.clone(), t.span));
             node.name_quoted = t.quoted;
+        }
+        if self.eat_kw("locale") {
+            if self.cur().kind == TokKind::Str {
+                let t = self.bump();
+                node.value = Some(Spanned::new(t.text.clone(), t.span));
+            } else {
+                self.err_expected("une locale entre guillemets", "locale");
+            }
         }
         match self.take_doc_body() {
             Some(s) => node.doc = Some(s.text),
@@ -1227,7 +1245,10 @@ impl Parser {
 
     fn parse_comment_tail(&mut self, node: &mut Node) {
         let ct = self.cur().clone();
-        if ct.kind == TokKind::Ident && !ct.is_ident("about") && (ct.quoted || !is_member_kw(&ct.text))
+        if ct.kind == TokKind::Ident
+            && !ct.is_ident("about")
+            && !ct.is_ident("locale")
+            && (ct.quoted || !is_member_kw(&ct.text))
         {
             let t = self.bump();
             node.name = Some(Spanned::new(t.text.clone(), t.span));
@@ -1249,6 +1270,14 @@ impl Parser {
                     continue;
                 }
                 break;
+            }
+        }
+        if self.eat_kw("locale") {
+            if self.cur().kind == TokKind::Str {
+                let t = self.bump();
+                node.value = Some(Spanned::new(t.text.clone(), t.span));
+            } else {
+                self.err_expected("une locale entre guillemets", "locale");
             }
         }
         match self.take_doc_body() {
@@ -1670,6 +1699,54 @@ mod tests {
     fn rep_without_language_reports_expected_token() {
         let (_n, d) = parse(r#"package P { part def Robot { rep myRep /* body */; } }"#);
         assert!(codes(&d).contains(&"E101"), "{:?}", codes(&d));
+    }
+
+    #[test]
+    fn doc_with_locale_parses() {
+        let (nodes, d) = parse(r#"package P { doc D locale "en" /* hello */; }"#);
+        assert!(d.is_empty(), "{:?}", codes(&d));
+        let doc = &nodes[0].children[0];
+        assert_eq!(doc.keyword, "doc");
+        assert_eq!(doc.name.as_ref().unwrap().text, "D");
+        assert_eq!(doc.value.as_ref().unwrap().text, "en");
+        assert_eq!(doc.doc.as_deref(), Some(" hello "));
+    }
+
+    #[test]
+    fn doc_without_a_name_but_with_locale_parses() {
+        let (nodes, d) = parse(r#"package P { doc locale "en" /* hello */; }"#);
+        assert!(d.is_empty(), "{:?}", codes(&d));
+        let doc = &nodes[0].children[0];
+        assert!(doc.name.is_none());
+        assert_eq!(doc.value.as_ref().unwrap().text, "en");
+    }
+
+    #[test]
+    fn comment_with_about_and_locale_parses() {
+        let (nodes, d) = parse(r#"package P { part def Robot; comment C about Robot locale "fr" /* bonjour */; } "#);
+        assert!(d.is_empty(), "{:?}", codes(&d));
+        let c = &nodes[0].children[1];
+        assert_eq!(c.refs[0].ctx, RefCtx::About);
+        assert_eq!(c.value.as_ref().unwrap().text, "fr");
+    }
+
+    #[test]
+    fn succession_flow_is_recognized_as_a_single_flow_keyword() {
+        let (nodes, d) = parse(
+            "package P { part def A; part def Link { port pa : A; port pb : A; succession flow pa to pb; } }",
+        );
+        assert!(d.is_empty(), "{:?}", codes(&d));
+        let sf = &nodes[0].children[1].children[2];
+        assert_eq!(sf.keyword, "succession flow");
+        assert_eq!(sf.kind, NodeKind::Relationship);
+    }
+
+    #[test]
+    fn expose_target_is_tagged_with_expose_context() {
+        let (nodes, d) = parse("package Q { part def X; } package P { expose Q::X; }");
+        assert!(d.is_empty(), "{:?}", codes(&d));
+        let expose = &nodes[1].children[0];
+        assert_eq!(expose.refs[0].ctx, RefCtx::ExposeTarget);
     }
 }
 

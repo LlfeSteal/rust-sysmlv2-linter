@@ -86,7 +86,7 @@ OPTIONS :
         --emit <diagnostics|ast|both>  Contenu émis (défaut : diagnostics)
         --stdin                        Lit le modèle sur l'entrée standard
         --name <NOM>                   Nom de fichier affiché avec --stdin
-        --pedantic                     Active les règles de style (W302/W306/W307/W309/W311/W312)
+        --pedantic                     Active les règles de style (W302/W306/W307/W309/W311/W312/W313)
         --unresolved <error|warn|off>  Sévérité des noms non résolus (défaut : error)
         --deny-warnings                Les avertissements deviennent bloquants
         --max-diags <N>                Nombre maximal de diagnostics (défaut : 500)

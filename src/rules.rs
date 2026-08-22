@@ -53,6 +53,7 @@ pub const CATALOG: &[(&str, &str, &str)] = &[
     ("W310", "connection-without-ends", "`connection def` sans extrémité `end`."),
     ("W311", "non-standard-keyword", "Mot-clé absent de la grammaire SysML v2 (`readonly`, `composite`, `portion` employés seuls) (--pedantic)."),
     ("W312", "kerml-only-keyword", "Mot-clé KerML absent de la surface SysML v2 (`feature`, `namespace`, `specialization`, `subclassification`) (--pedantic)."),
+    ("W313", "public-import-at-top-level", "`import` sans paquet englobant marqué `public`/`protected` au lieu de `private` (--pedantic)."),
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -307,6 +308,7 @@ pub fn check(m: &Model, opts: &Options) -> Vec<Diagnostic> {
     let ctx = build_ctx(m);
 
     check_duplicates(m, &mut out);
+    check_inherited_shadowing(m, &mut out);
 
     for id in 1..m.syms.len() {
         check_structure(m, id, opts, &mut out);
@@ -662,6 +664,73 @@ fn check_duplicates(m: &Model, out: &mut Vec<Diagnostic>) {
     }
 }
 
+/// E201 (variante `shadows-inherited-member`) : un nouveau membre masque un
+/// membre hérité d'un supertype sans le redéfinir explicitement (`:>>` /
+/// `references`) — même mécanisme de résolution de supertype que
+/// `check_redefines` (E214), dans l'autre sens : E214 vérifie qu'une
+/// `redefines` cible bien un membre hérité existant, ceci vérifie qu'un
+/// membre qui n'est *pas* une `redefines` n'entre pas en collision avec un
+/// membre hérité.
+fn check_inherited_shadowing(m: &Model, out: &mut Vec<Diagnostic>) {
+    for scope in 1..m.syms.len() {
+        let rels = m.syms[scope].rels.clone();
+        if rels.is_empty() {
+            continue;
+        }
+        let owner_scope = m.syms[scope].parent.unwrap_or(0);
+        let mut supertypes: Vec<usize> = Vec::new();
+        for r in rels.iter() {
+            if !matches!(r.kind, RelKind::Specializes | RelKind::Subsets) {
+                continue;
+            }
+            let mut res = Resolver::new(m);
+            if let Res::Local(t) = res.resolve(owner_scope, &r.target) {
+                supertypes.push(t);
+            }
+        }
+        if supertypes.is_empty() {
+            continue;
+        }
+
+        for &c in &m.syms[scope].children.clone() {
+            let cs = &m.syms[c];
+            let name = match &cs.name {
+                Some(n) => n.clone(),
+                None => continue,
+            };
+            if cs.kind == NodeKind::Doc || cs.kind == NodeKind::Comment {
+                continue;
+            }
+            let overrides = cs
+                .rels
+                .iter()
+                .any(|r| matches!(r.kind, RelKind::Redefines | RelKind::References));
+            if overrides {
+                continue;
+            }
+            for &t in &supertypes {
+                let mut res = Resolver::new(m);
+                let mut visited = Vec::new();
+                if res.lookup(t, &name, &mut visited, 0).is_some() {
+                    out.push(
+                        Diagnostic::error(
+                            "E201",
+                            "shadows-inherited-member",
+                            cs.name_span,
+                            format!(
+                                "`{}` masque un membre hérité sans le redéfinir explicitement",
+                                name
+                            ),
+                        )
+                        .hint("utilise `:>>` (redefines) pour redéfinir explicitement le membre hérité, ou renomme ce membre".to_string()),
+                    );
+                    break;
+                }
+            }
+        }
+    }
+}
+
 // --------------------------------------------------------------------------
 // Références
 // --------------------------------------------------------------------------
@@ -680,6 +749,7 @@ fn ctx_label(ctx: RefCtx) -> &'static str {
         RefCtx::About => "cible de commentaire",
         RefCtx::ImportTarget => "cible d'import",
         RefCtx::AliasTarget => "cible d'alias",
+        RefCtx::ExposeTarget => "cible d'exposition",
         RefCtx::Annotation => "métadonnée appliquée",
         RefCtx::Value => "expression de valeur",
         RefCtx::Other => "référence",
@@ -1073,6 +1143,25 @@ fn check_style(m: &Model, id: usize, opts: &Options, out: &mut Vec<Diagnostic>) 
                     format!("`{}` n'existe qu'au niveau KerML, absent de la grammaire de surface SysML v2", head_kw(&s.keyword)),
                 )
                 .hint(hint.to_string()),
+            );
+        }
+    }
+
+    // W313 — un import sans paquet englobant (racine du fichier) doit être
+    // `private` dans la grammaire réelle (`checkImport` côté KerML).
+    if s.kind == NodeKind::Import && s.parent == Some(0) {
+        if let Some(vis) = s.prefixes.iter().find(|p| matches!(p.as_str(), "public" | "protected")) {
+            out.push(
+                Diagnostic::warn(
+                    "W313",
+                    "public-import-at-top-level",
+                    s.name_span,
+                    format!(
+                        "un `import` sans paquet englobant devrait être `private` (trouvé `{}`)",
+                        vis
+                    ),
+                )
+                .hint("retire ce modificateur de visibilité, ou déplace l'import dans un `package`".to_string()),
             );
         }
     }
@@ -1684,6 +1773,72 @@ mod tests {
         o.pedantic = true;
         let d = analyze_opts("package P { part def Robot; }", &o);
         assert!(!has(&d, "W312"), "{:?}", d);
+    }
+
+    #[test]
+    fn w313_public_import_at_top_level() {
+        let mut o = Options::default();
+        o.pedantic = true;
+        let d = analyze_opts("package Q { part def X; } public import Q::X;", &o);
+        assert!(has(&d, "W313"), "{:?}", d);
+    }
+
+    #[test]
+    fn w313_does_not_fire_on_private_top_level_import() {
+        let mut o = Options::default();
+        o.pedantic = true;
+        let d = analyze_opts("package Q { part def X; } private import Q::X;", &o);
+        assert!(!has(&d, "W313"), "{:?}", d);
+    }
+
+    #[test]
+    fn w313_does_not_fire_on_nested_import() {
+        let mut o = Options::default();
+        o.pedantic = true;
+        let d = analyze_opts("package Q { part def X; } package P { public import Q::X; }", &o);
+        assert!(!has(&d, "W313"), "{:?}", d);
+    }
+
+    #[test]
+    fn w313_requires_pedantic_to_fire() {
+        let d = analyze("package Q { part def X; } public import Q::X;");
+        assert!(!has(&d, "W313"), "{:?}", d);
+    }
+
+    #[test]
+    fn e201_shadows_inherited_member_without_redefines() {
+        let src = r#"
+            package P {
+                part def Base { attribute x : Integer; }
+                part def Derived :> Base { attribute x : Integer; }
+            }
+        "#;
+        let d = analyze(src);
+        assert!(has(&d, "E201"), "{:?}", d);
+    }
+
+    #[test]
+    fn e201_does_not_fire_when_member_uses_redefines() {
+        let src = r#"
+            package P {
+                part def Base { attribute x : Integer; }
+                part def Derived :> Base { attribute y :>> x; }
+            }
+        "#;
+        let d = analyze(src);
+        assert!(!has(&d, "E201"), "{:?}", d);
+    }
+
+    #[test]
+    fn e201_does_not_fire_when_no_name_collision() {
+        let src = r#"
+            package P {
+                part def Base { attribute x : Integer; }
+                part def Derived :> Base { attribute y : Integer; }
+            }
+        "#;
+        let d = analyze(src);
+        assert!(!has(&d, "E201"), "{:?}", d);
     }
 
     #[test]
