@@ -1,0 +1,261 @@
+name: Release
+
+# Deux points d'entrée, un seul workflow :
+#
+#   1. `workflow_dispatch` depuis `main` : le job `prepare` incrémente la
+#      version, commite, pose le tag annoté `vX.Y.Z` et le pousse ; `build`
+#      et `release` enchaînent via `needs:`.
+#   2. `push` d'un tag `vX.Y.Z` fait à la main : `prepare` est sauté, `build`
+#      et `release` tournent sur le tag poussé.
+#
+# Pourquoi un seul workflow plutôt que « dispatch pose le tag → un workflow
+# `on: push: tags` publie » : un événement produit avec le `GITHUB_TOKEN` par
+# défaut ne déclenche PAS d'autre workflow. Ce découpage-là exigerait un PAT.
+# L'enchaînement par `needs:` évite complètement le problème, sans secret.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Niveau d'incrément sémantique"
+        required: true
+        type: choice
+        options: [patch, minor, major]
+  push:
+    # Glob strict : un tag `v-experiment` ne doit pas publier de release.
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: read
+
+concurrency:
+  # Groupe fixe : deux releases ne peuvent pas courir l'une contre l'autre sur
+  # l'incrément de version. On ne tue jamais une publication à moitié faite.
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  BIN_NAME: sysml-check
+
+jobs:
+  prepare:
+    name: Bump version and tag
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Il faut les tags pour détecter une collision.
+          fetch-depth: 0
+          # NB : on garde la persistance des identifiants (contrairement aux
+          # autres jobs) — c'est ce qui permet au `git push` ci-dessous de
+          # s'authentifier avec le GITHUB_TOKEN.
+
+      - name: Compute, write and tag the new version
+        id: bump
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+
+          current="$(grep -m1 -E '^version[[:space:]]*=[[:space:]]*"' Cargo.toml \
+                     | sed -E 's/.*"([^"]+)".*/\1/')"
+          [[ "$current" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || { echo "::error::version illisible dans Cargo.toml : '$current'"; exit 1; }
+
+          IFS=. read -r major minor patch <<<"$current"
+          case "$BUMP" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+            *) echo "::error::incrément inconnu : '$BUMP'"; exit 1 ;;
+          esac
+          new="${major}.${minor}.${patch}"
+          tag="v${new}"
+
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "::error::le tag ${tag} existe déjà"; exit 1
+          fi
+
+          # Plage `0,/re/` : ne remplace que la première occurrence, donc la
+          # clé de [package] et jamais quoi que ce soit dans [profile.release].
+          sed -i -E "0,/^version[[:space:]]*=[[:space:]]*\"${current}\"/s//version = \"${new}\"/" Cargo.toml
+          grep -q "^version = \"${new}\"$" Cargo.toml \
+            || { echo "::error::la réécriture de Cargo.toml a échoué"; exit 1; }
+
+          # Rafraîchit Cargo.lock sans toucher au réseau (le crate n'a aucune
+          # dépendance) et sans le faire passer en v4 — un lock v4 casserait
+          # le job CI « MSRV 1.65 ».
+          cargo update --workspace --offline
+          grep -q "^version = \"${new}\"" Cargo.lock \
+            || { echo "::error::Cargo.lock n'a pas été rafraîchi"; exit 1; }
+          grep -q '^version = 3$' Cargo.lock \
+            || { echo "::error::Cargo.lock n'est plus au format v3"; exit 1; }
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock
+          git commit -m "chore(release): ${tag}"
+          # Tag annoté : porte tagueur/date/message, c'est ce que `git describe`
+          # privilégie et ce qu'attend `gh release create --verify-tag`.
+          git tag -a "${tag}" -m "Release ${tag}"
+          # --atomic : jamais de tag sans son commit, ni l'inverse.
+          git push --atomic origin "HEAD:${GITHUB_REF_NAME}" "refs/tags/${tag}"
+
+          echo "version=${new}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "### Release \`${tag}\` (depuis \`${current}\`)" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: [prepare]
+    # Sur le chemin « push d'un tag », `prepare` est *sauté*, et un `needs:`
+    # sauté saute normalement ses dépendants. `!cancelled()` remet le job dans
+    # la course ; le test explicite sur `result` rétablit la barrière d'échec
+    # que `!cancelled()` vient d'enlever. Ne pas remplacer par `always()` :
+    # cela publierait une release même après un `prepare` en échec.
+    if: ${{ !cancelled() && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        # Git Bash sur Windows : un seul script d'empaquetage pour les 5 cibles.
+        shell: bash
+    env:
+      TAG: ${{ needs.prepare.outputs.tag || github.ref_name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            archive: tar.gz
+            apt: musl-tools
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+            ext: .exe
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Sur le chemin dispatch, `prepare` a déjà poussé le tag : on extrait
+          # donc exactement le commit tagué, jamais une branche mouvante. Sur le
+          # chemin push, les sorties d'un job sauté valent '' (faux), et
+          # `github.ref_name` fournit le tag.
+          ref: ${{ needs.prepare.outputs.tag || github.ref_name }}
+          persist-credentials: false
+
+      - name: Install musl tooling
+        if: matrix.apt != ''
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt }}
+
+      - name: Add target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Smoke test
+        # Pas de Rosetta 2 sur les runners macOS arm64 : cette tranche-là ne
+        # peut pas être exécutée sur sa propre machine de build.
+        if: matrix.target != 'x86_64-apple-darwin'
+        run: |
+          set -euo pipefail
+          out="$(./target/${{ matrix.target }}/release/${BIN_NAME}${{ matrix.ext }} --version)"
+          echo "$out"
+          # Vérifie de bout en bout que l'incrément a bien atteint le binaire
+          # (src/main.rs lit env!("CARGO_PKG_VERSION")).
+          case "$out" in
+            *"${TAG#v}"*) ;;
+            *) echo "::error::le binaire annonce '$out', attendu ${TAG#v}"; exit 1 ;;
+          esac
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          name="${BIN_NAME}-${TAG}-${{ matrix.target }}"
+          mkdir -p "dist/${name}"
+          cp "target/${{ matrix.target }}/release/${BIN_NAME}${{ matrix.ext }}" "dist/${name}/"
+          # LICENSE est obligatoire dans chaque archive : le projet est GPL-3.0.
+          cp README.md LICENSE "dist/${name}/"
+          cd dist
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            # 7z est préinstallé sur windows-latest. Préféré à Compress-Archive,
+            # qui écrit des séparateurs antislash dans les entrées du zip.
+            7z a -tzip -mx=9 "${name}.zip" "${name}" >/dev/null
+            asset="${name}.zip"
+          else
+            tar -czf "${name}.tar.gz" "${name}"
+            asset="${name}.tar.gz"
+          fi
+          # macOS n'a pas sha256sum, seulement shasum.
+          if command -v sha256sum >/dev/null; then
+            sha256sum "$asset" > "${asset}.sha256"
+          else
+            shasum -a 256 "$asset" > "${asset}.sha256"
+          fi
+          cat "${asset}.sha256"
+          rm -rf "${name}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          # upload-artifact v4 impose un nom unique par job.
+          name: dist-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish release
+    needs: [prepare, build]
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.prepare.outputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # Pas de checkout : `gh` passe par l'API, et `--generate-notes` est
+      # calculé côté serveur depuis la plage de commits depuis le tag précédent.
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: dist-*
+          merge-multiple: true
+
+      - name: Aggregate checksums
+        run: |
+          set -euo pipefail
+          ls -la dist
+          cat dist/*.sha256 | sort -k2 > dist/SHA256SUMS
+          rm -f dist/*.sha256
+          cat dist/SHA256SUMS
+
+      - name: Create release
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "${BIN_NAME} $TAG" \
+            --generate-notes \
+            --verify-tag \
+            --latest \
+            dist/*

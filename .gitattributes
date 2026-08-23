@@ -1,0 +1,14 @@
+# Normalise les fichiers texte en LF dans l'index, et les extrait en LF sur
+# toutes les plateformes (y compris les runners Windows, dont le
+# `core.autocrlf=true` par défaut réécrirait sinon les fins de ligne).
+* text=auto eol=lf
+
+# Les fixtures SysML sont des entrées de test à l'octet près : aucune
+# conversion de fin de ligne, dans aucun sens.
+# `tests/fixtures/edge/crlf_line_endings.sysml` DOIT rester en CRLF partout,
+# et toutes les autres en LF. Cette ligne doit rester APRÈS le joker
+# ci-dessus (c'est la dernière règle qui correspond qui gagne).
+# `-text` plutôt que `binary` : on veut garder des diffs lisibles.
+*.sysml -text
+
+Cargo.lock text eol=lf
