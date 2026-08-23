@@ -1,5 +1,7 @@
 # sysml-check
 
+[![CI](https://github.com/LlfeSteal/rust-sysmlv2-linter/actions/workflows/ci.yml/badge.svg)](https://github.com/LlfeSteal/rust-sysmlv2-linter/actions/workflows/ci.yml)
+
 **A fast, zero-dependency linter for SysML v2 textual notation.**
 
 `sysml-check` parses and semantically checks `.sysml` files — the
@@ -35,6 +37,30 @@ directly.
   writing or verifying a model.
 
 ## Installation
+
+### Prebuilt binaries
+
+Each [release](https://github.com/LlfeSteal/rust-sysmlv2-linter/releases)
+ships a single self-contained binary for Linux (glibc and static musl),
+macOS (Apple silicon and Intel) and Windows — no Rust toolchain needed.
+Download the archive for your platform, verify it against `SHA256SUMS`,
+and put the binary on your `$PATH`:
+
+```sh
+TAG=v1.2.3   # the release you want, from the releases page
+TARGET=x86_64-unknown-linux-musl
+curl -fsSLO "https://github.com/LlfeSteal/rust-sysmlv2-linter/releases/download/$TAG/sysml-check-$TAG-$TARGET.tar.gz"
+curl -fsSL  "https://github.com/LlfeSteal/rust-sysmlv2-linter/releases/download/$TAG/SHA256SUMS" \
+  | sha256sum --check --ignore-missing
+tar xzf "sysml-check-$TAG-$TARGET.tar.gz"
+sudo install "sysml-check-$TAG-$TARGET/sysml-check" /usr/local/bin/
+sysml-check --version
+```
+
+The `x86_64-unknown-linux-musl` build is statically linked, so it runs on
+any Linux including Alpine and distroless containers.
+
+### From source
 
 Requires a Rust toolchain (`rust-version = "1.65"` or newer) — nothing
 else. Any way of getting `cargo` works identically on any OS or distro,
@@ -208,6 +234,15 @@ cargo build --all-targets   # must be warning-free
 cargo test                  # 140 unit tests (inline in src/*.rs) +
                              # 82 CLI integration tests (tests/cli.rs)
 ```
+
+CI enforces all of that on every push and pull request, plus
+`cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`,
+and a `cargo check` against the declared MSRV (1.65). The test matrix runs
+on Linux, macOS and Windows, so run `cargo fmt --all` before pushing.
+
+Releases are cut manually from **Actions → Release → Run workflow**,
+choosing a `patch`/`minor`/`major` bump: the workflow bumps `Cargo.toml`,
+tags `vX.Y.Z`, and builds the published binaries from that tag.
 
 Tests are backed by fixture corpora under `tests/fixtures/`: 15 files
 that must produce zero diagnostics (`valid/`), 39 that must trigger one

@@ -66,3 +66,9 @@ export SYSML_CHECK_BIN=/path/to/sysml-check
 ```
 
 `check.sh` uses this in preference to everything else.
+
+This is the quickest route on a machine with no Rust toolchain: grab the
+archive for your platform from the
+[releases page](https://github.com/LlfeSteal/rust-sysmlv2-linter/releases)
+— Linux (glibc / static musl), macOS (Apple silicon / Intel), Windows —
+extract it, and point `SYSML_CHECK_BIN` at the extracted binary.
