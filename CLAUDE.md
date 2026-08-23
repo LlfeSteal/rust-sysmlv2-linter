@@ -56,6 +56,23 @@ Key design choices worth knowing before touching this code:
   interchangeable separators. Documented, not a bug — see the doc comment
   on `QName` and `tests/fixtures/edge/dot_and_double_colon_are_conflated.sysml`.
 
+## Git: what an agent must never do
+
+**Never push, and never rewrite history.** Specifically forbidden without
+the user explicitly asking for that exact action, every time:
+
+- `git push` (in any form, including `--tags` and `--force`)
+- `git commit --amend`, `git rebase`, `git reset --hard`, `git revert`,
+  `git filter-branch`, `git tag -d`, deleting or force-moving any ref
+
+Committing locally is fine. Pushing is the user's call: this repo's
+release pipeline is triggered by what lands on `main` and by tags, so a
+push is not a local operation — it can cut a release. Leave the commits in
+the working repo and say they're ready to push.
+
+If something needs undoing, do it as a new forward commit and explain it,
+rather than rewriting what already exists.
+
 ## Build & test
 
 ```bash
