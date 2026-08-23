@@ -209,12 +209,15 @@ impl Lexer {
                 }
                 let span = self.span_from(start, line, col);
                 if !closed {
-                    self.diags.push(Diagnostic::error(
-                        "E001",
-                        "unterminated-block-comment",
-                        span,
-                        "commentaire de bloc non terminé".to_string(),
-                    ).hint("ferme le commentaire avec `*/`".to_string()));
+                    self.diags.push(
+                        Diagnostic::error(
+                            "E001",
+                            "unterminated-block-comment",
+                            span,
+                            "commentaire de bloc non terminé".to_string(),
+                        )
+                        .hint("ferme le commentaire avec `*/`".to_string()),
+                    );
                 }
                 toks.push(Token {
                     kind: TokKind::BlockComment,
@@ -438,7 +441,7 @@ impl Lexer {
                 "E003",
                 "unexpected-character",
                 span,
-                format!("caractère inattendu `{}`", c),
+                format!("caractère inattendu `{c}`"),
             );
             if let Some(h) = hint {
                 d = d.hint(h);
@@ -456,7 +459,11 @@ mod tests {
 
     fn toks(src: &str) -> Vec<Token> {
         let (t, d) = Lexer::new(src, 0).tokenize();
-        assert!(d.is_empty(), "diagnostics inattendus : {:?}", d.iter().map(|x| x.code).collect::<Vec<_>>());
+        assert!(
+            d.is_empty(),
+            "diagnostics inattendus : {:?}",
+            d.iter().map(|x| x.code).collect::<Vec<_>>()
+        );
         t
     }
 

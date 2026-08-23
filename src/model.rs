@@ -2,7 +2,7 @@
 //! L'indice 0 est une portée globale synthétique contenant les racines de tous
 //! les fichiers analysés.
 
-use crate::ast::{Mult, Node, NodeKind, QName, Rel, RefUse};
+use crate::ast::{Mult, Node, NodeKind, QName, RefUse, Rel};
 use crate::diag::Span;
 
 #[derive(Clone, Debug)]
@@ -110,7 +110,7 @@ fn add_node(model: &mut Model, node: &Node, parent: usize) -> usize {
     let own = name.clone().or_else(|| short.clone());
     let qname = match (&own, parent_q.is_empty()) {
         (Some(n), true) => n.clone(),
-        (Some(n), false) => format!("{}::{}", parent_q, n),
+        (Some(n), false) => format!("{parent_q}::{n}"),
         (None, _) => String::new(),
     };
 

@@ -114,7 +114,13 @@ impl<'a> Resolver<'a> {
     }
 
     /// Cherche `name` dans `scope` puis dans ses supertypes.
-    fn lookup(&mut self, scope: usize, name: &str, visited: &mut Vec<usize>, depth: u32) -> Option<usize> {
+    fn lookup(
+        &mut self,
+        scope: usize,
+        name: &str,
+        visited: &mut Vec<usize>,
+        depth: u32,
+    ) -> Option<usize> {
         if depth > 8 || !self.tick() || visited.contains(&scope) {
             return None;
         }
@@ -376,7 +382,7 @@ fn check_structure(m: &Model, id: usize, _opts: &Options, out: &mut Vec<Diagnost
                 "E213",
                 "legacy-keyword",
                 s.span,
-                format!("`{}` n'existe pas en SysML v2", head),
+                format!("`{head}` n'existe pas en SysML v2"),
             )
             .hint(legacy_hint(head).to_string()),
         );
@@ -434,9 +440,11 @@ fn check_structure(m: &Model, id: usize, _opts: &Options, out: &mut Vec<Diagnost
                             "E218",
                             "invalid-multiplicity-range",
                             mu.span,
-                            format!("borne inférieure ({}) supérieure à la borne supérieure ({})", a, b),
+                            format!(
+                                "borne inférieure ({a}) supérieure à la borne supérieure ({b})"
+                            ),
                         )
-                        .hint(format!("écris `[{}..{}]`", b, a)),
+                        .hint(format!("écris `[{b}..{a}]`")),
                     );
                 }
             }
@@ -498,9 +506,12 @@ fn check_structure(m: &Model, id: usize, _opts: &Options, out: &mut Vec<Diagnost
                     "E231",
                     "actor-outside-requirement-or-case",
                     s.span,
-                    "`actor` n'est valide que dans une exigence (`requirement`) ou un cas (`case`)".to_string(),
+                    "`actor` n'est valide que dans une exigence (`requirement`) ou un cas (`case`)"
+                        .to_string(),
                 )
-                .hint("déplace cet `actor` dans une `requirement def` ou une `case def`".to_string()),
+                .hint(
+                    "déplace cet `actor` dans une `requirement def` ou une `case def`".to_string(),
+                ),
             );
         }
     }
@@ -530,7 +541,7 @@ fn check_structure(m: &Model, id: usize, _opts: &Options, out: &mut Vec<Diagnost
                     "E233",
                     "require-assume-outside-requirement",
                     s.span,
-                    format!("`{}` n'est valide que dans une exigence (`requirement`)", head),
+                    format!("`{head}` n'est valide que dans une exigence (`requirement`)"),
                 )
                 .hint("déplace cette contrainte dans une `requirement def`".to_string()),
             );
@@ -565,7 +576,10 @@ fn check_structure(m: &Model, id: usize, _opts: &Options, out: &mut Vec<Diagnost
                     s.span,
                     "`frame` n'est valide que dans une exigence (`requirement`)".to_string(),
                 )
-                .hint("déplace ce `frame` dans une `requirement def` (ou un `concern`/`viewpoint`)".to_string()),
+                .hint(
+                    "déplace ce `frame` dans une `requirement def` (ou un `concern`/`viewpoint`)"
+                        .to_string(),
+                ),
             );
         }
     }
@@ -616,7 +630,8 @@ fn check_structure(m: &Model, id: usize, _opts: &Options, out: &mut Vec<Diagnost
                     "E227",
                     "package-inside-definition",
                     s.span,
-                    "un `package` ne peut pas être déclaré dans une définition ou un usage".to_string(),
+                    "un `package` ne peut pas être déclaré dans une définition ou un usage"
+                        .to_string(),
                 )
                 .hint("sors le paquet au niveau supérieur du fichier".to_string()),
             );
@@ -718,8 +733,7 @@ fn check_inherited_shadowing(m: &Model, out: &mut Vec<Diagnostic>) {
                             "shadows-inherited-member",
                             cs.name_span,
                             format!(
-                                "`{}` masque un membre hérité sans le redéfinir explicitement",
-                                name
+                                "`{name}` masque un membre hérité sans le redéfinir explicitement"
                             ),
                         )
                         .hint("utilise `:>>` (redefines) pour redéfinir explicitement le membre hérité, ou renomme ce membre".to_string()),
@@ -903,9 +917,11 @@ fn report_resolution(
                             "W301",
                             "unimported-standard-type",
                             q.span,
-                            format!("`{}` vient de la bibliothèque standard mais n'est pas importé", name),
+                            format!(
+                                "`{name}` vient de la bibliothèque standard mais n'est pas importé"
+                            ),
                         )
-                        .hint(format!("ajoute `import {}::*;` en tête du paquet", pkg)),
+                        .hint(format!("ajoute `import {pkg}::*;` en tête du paquet")),
                     );
                 }
             }
@@ -933,7 +949,7 @@ fn report_resolution(
                 None => ctx_label(rctx),
             };
 
-            let mut msg = format!("{} inconnu : `{}`", label, bad);
+            let mut msg = format!("{label} inconnu : `{bad}`");
             if idx > 0 {
                 msg = format!(
                     "`{}` n'est pas un membre de `{}`",
@@ -953,7 +969,7 @@ fn report_resolution(
             };
 
             if let Some(sugg) = nearest_name(m, scope, &bad) {
-                d = d.hint(format!("vouliez-vous dire `{}` ?", sugg));
+                d = d.hint(format!("vouliez-vous dire `{sugg}` ?"));
             } else if ctx.opaque_wildcard {
                 d = d.hint(
                     "aucune déclaration correspondante dans les fichiers analysés ; \
@@ -962,8 +978,7 @@ fn report_resolution(
                 );
             } else {
                 d = d.hint(format!(
-                    "déclare l'élément (ex. `part def {};`) ou ajoute l'import du paquet qui le contient",
-                    bad
+                    "déclare l'élément (ex. `part def {bad};`) ou ajoute l'import du paquet qui le contient"
                 ));
             }
             out.push(d);
@@ -1020,13 +1035,11 @@ fn check_redefines(m: &Model, id: usize, target: &QName, out: &mut Vec<Diagnosti
             "redefines-target-not-inherited",
             target.span,
             format!(
-                "`{}` n'existe dans aucun supertype de `{}` : rien à redéfinir",
-                name, owner_name
+                "`{name}` n'existe dans aucun supertype de `{owner_name}` : rien à redéfinir"
             ),
         )
         .hint(format!(
-            "déclare `{}` dans le supertype, ou remplace la redéfinition par une simple déclaration",
-            name
+            "déclare `{name}` dans le supertype, ou remplace la redéfinition par une simple déclaration"
         )),
     );
 }
@@ -1061,7 +1074,10 @@ fn check_style(m: &Model, id: usize, opts: &Options, out: &mut Vec<Diagnostic>) 
                     s.name_span,
                     "cette `connection def` ne déclare aucune extrémité `end`".to_string(),
                 )
-                .hint("déclare les extrémités : `end source : PortA;` et `end cible : PortB;`".to_string()),
+                .hint(
+                    "déclare les extrémités : `end source : PortA;` et `end cible : PortB;`"
+                        .to_string(),
+                ),
             );
         }
     }
@@ -1108,7 +1124,7 @@ fn check_style(m: &Model, id: usize, opts: &Options, out: &mut Vec<Diagnostic>) 
                     "W311",
                     "non-standard-keyword",
                     s.name_span,
-                    format!("`{}` n'est pas un mot-clé de la grammaire SysML v2", p),
+                    format!("`{p}` n'est pas un mot-clé de la grammaire SysML v2"),
                 )
                 .hint(hint.to_string()),
             );
@@ -1150,18 +1166,24 @@ fn check_style(m: &Model, id: usize, opts: &Options, out: &mut Vec<Diagnostic>) 
     // W313 — un import sans paquet englobant (racine du fichier) doit être
     // `private` dans la grammaire réelle (`checkImport` côté KerML).
     if s.kind == NodeKind::Import && s.parent == Some(0) {
-        if let Some(vis) = s.prefixes.iter().find(|p| matches!(p.as_str(), "public" | "protected")) {
+        if let Some(vis) = s
+            .prefixes
+            .iter()
+            .find(|p| matches!(p.as_str(), "public" | "protected"))
+        {
             out.push(
                 Diagnostic::warn(
                     "W313",
                     "public-import-at-top-level",
                     s.name_span,
                     format!(
-                        "un `import` sans paquet englobant devrait être `private` (trouvé `{}`)",
-                        vis
+                        "un `import` sans paquet englobant devrait être `private` (trouvé `{vis}`)"
                     ),
                 )
-                .hint("retire ce modificateur de visibilité, ou déplace l'import dans un `package`".to_string()),
+                .hint(
+                    "retire ce modificateur de visibilité, ou déplace l'import dans un `package`"
+                        .to_string(),
+                ),
             );
         }
     }
@@ -1185,7 +1207,7 @@ fn check_style(m: &Model, id: usize, opts: &Options, out: &mut Vec<Diagnostic>) 
                         "W306",
                         "naming-convention",
                         s.name_span,
-                        format!("le nom de définition `{}` devrait commencer par une majuscule", n),
+                        format!("le nom de définition `{n}` devrait commencer par une majuscule"),
                     )
                     .hint("convention SysML v2 : UpperCamelCase pour les définitions".to_string()),
                 );
@@ -1196,7 +1218,7 @@ fn check_style(m: &Model, id: usize, opts: &Options, out: &mut Vec<Diagnostic>) 
                         "W306",
                         "naming-convention",
                         s.name_span,
-                        format!("le nom d'usage `{}` devrait commencer par une minuscule", n),
+                        format!("le nom d'usage `{n}` devrait commencer par une minuscule"),
                     )
                     .hint("convention SysML v2 : lowerCamelCase pour les usages".to_string()),
                 );
@@ -1209,14 +1231,20 @@ fn check_style(m: &Model, id: usize, opts: &Options, out: &mut Vec<Diagnostic>) 
         && s.kind == NodeKind::Usage
         && s.rels.is_empty()
         && s.name.is_some()
-        && matches!(head_kw(&s.keyword), "part" | "item" | "attribute" | "port" | "ref")
+        && matches!(
+            head_kw(&s.keyword),
+            "part" | "item" | "attribute" | "port" | "ref"
+        )
     {
         out.push(
             Diagnostic::warn(
                 "W309",
                 "untyped-usage",
                 s.name_span,
-                format!("l'usage `{}` n'est pas typé", s.name.clone().unwrap_or_default()),
+                format!(
+                    "l'usage `{}` n'est pas typé",
+                    s.name.clone().unwrap_or_default()
+                ),
             )
             .hint("ajoute un type : `part moteur : Moteur;`".to_string()),
         );
@@ -1235,7 +1263,11 @@ mod tests {
         let mut p = Parser::new(toks, 500);
         let nodes = p.parse_unit();
         diags.extend(p.diags.clone());
-        assert!(diags.is_empty(), "erreur de syntaxe inattendue : {:?}", diags.iter().map(|d| d.code).collect::<Vec<_>>());
+        assert!(
+            diags.is_empty(),
+            "erreur de syntaxe inattendue : {:?}",
+            diags.iter().map(|d| d.code).collect::<Vec<_>>()
+        );
         let model = Model::build(&nodes);
         diags.extend(check(&model, opts));
         diags
@@ -1243,6 +1275,15 @@ mod tests {
 
     fn analyze(src: &str) -> Vec<Diagnostic> {
         analyze_opts(src, &Options::default())
+    }
+
+    /// Options par défaut, mais en mode `--pedantic` (le seul réglage que la
+    /// grande majorité des tests de règles a besoin de changer).
+    fn pedantic() -> Options {
+        Options {
+            pedantic: true,
+            ..Default::default()
+        }
     }
 
     fn codes(d: &[Diagnostic]) -> Vec<&'static str> {
@@ -1282,7 +1323,7 @@ mod tests {
             }
         "#;
         let d = analyze(src);
-        assert_eq!(errors(&d), 0, "{:?}", d);
+        assert_eq!(errors(&d), 0, "{d:?}");
     }
 
     #[test]
@@ -1301,7 +1342,7 @@ mod tests {
     #[test]
     fn e201_same_name_in_different_scopes_is_allowed() {
         let d = analyze("package P { part def A { attribute x : Integer; } part def B { attribute x : Integer; } }");
-        assert!(!has(&d, "E201"), "{:?}", d);
+        assert!(!has(&d, "E201"), "{d:?}");
     }
 
     #[test]
@@ -1313,7 +1354,7 @@ mod tests {
     #[test]
     fn e210_does_not_fire_on_usage_typing() {
         let d = analyze("package P { part def Robot; part r : Robot; }");
-        assert!(!has(&d, "E210"), "{:?}", d);
+        assert!(!has(&d, "E210"), "{d:?}");
     }
 
     #[test]
@@ -1324,17 +1365,25 @@ mod tests {
 
     #[test]
     fn e213_flags_every_legacy_keyword() {
-        for kw in ["block", "value", "class", "association", "stereotype", "property", "operation"] {
-            let src = format!("package P {{ {} X; }}", kw);
+        for kw in [
+            "block",
+            "value",
+            "class",
+            "association",
+            "stereotype",
+            "property",
+            "operation",
+        ] {
+            let src = format!("package P {{ {kw} X; }}");
             let d = analyze(&src);
-            assert!(has(&d, "E213"), "mot-clé {} non signalé : {:?}", kw, d);
+            assert!(has(&d, "E213"), "mot-clé {kw} non signalé : {d:?}");
         }
     }
 
     #[test]
     fn e213_does_not_flag_current_keywords() {
         let d = analyze("package P { part def Robot; item def Fuel; port def P1; }");
-        assert!(!has(&d, "E213"), "{:?}", d);
+        assert!(!has(&d, "E213"), "{d:?}");
     }
 
     #[test]
@@ -1349,7 +1398,7 @@ mod tests {
             }
         "#;
         let d = analyze(src);
-        assert!(has(&d, "E214"), "{:?}", d);
+        assert!(has(&d, "E214"), "{d:?}");
     }
 
     #[test]
@@ -1363,7 +1412,7 @@ mod tests {
             }
         "#;
         let d = analyze(src);
-        assert!(!has(&d, "E214"), "{:?}", d);
+        assert!(!has(&d, "E214"), "{d:?}");
     }
 
     #[test]
@@ -1375,7 +1424,7 @@ mod tests {
     #[test]
     fn e215_does_not_fire_inside_a_connection() {
         let d = analyze("package P { part def X; connection def C { end a : X; end b : X; } }");
-        assert!(!has(&d, "E215"), "{:?}", d);
+        assert!(!has(&d, "E215"), "{d:?}");
     }
 
     #[test]
@@ -1387,14 +1436,14 @@ mod tests {
     #[test]
     fn e216_does_not_fire_inside_a_requirement() {
         let d = analyze("package P { part def Robot; requirement def R { subject r : Robot; } }");
-        assert!(!has(&d, "E216"), "{:?}", d);
+        assert!(!has(&d, "E216"), "{d:?}");
     }
 
     #[test]
     fn e216_subject_allowed_inside_a_concern() {
         // ConcernDefinition spécialise RequirementDefinition dans le métamodèle.
         let d = analyze("package P { part def Robot; concern def C { subject r : Robot; } }");
-        assert!(!has(&d, "E216"), "{:?}", d);
+        assert!(!has(&d, "E216"), "{d:?}");
     }
 
     #[test]
@@ -1406,7 +1455,7 @@ mod tests {
     #[test]
     fn e231_actor_allowed_inside_requirement_and_case() {
         let d = analyze("package P { requirement def R { actor a; } case def C { actor a; } }");
-        assert!(!has(&d, "E231"), "{:?}", d);
+        assert!(!has(&d, "E231"), "{d:?}");
     }
 
     #[test]
@@ -1419,13 +1468,13 @@ mod tests {
     fn e232_stakeholder_not_allowed_inside_a_case() {
         // Contrairement à `actor`, `stakeholder` n'est légal que dans une exigence.
         let d = analyze("package P { case def C { stakeholder s; } }");
-        assert!(has(&d, "E232"), "{:?}", d);
+        assert!(has(&d, "E232"), "{d:?}");
     }
 
     #[test]
     fn e232_stakeholder_allowed_inside_requirement() {
         let d = analyze("package P { requirement def R { stakeholder s; } }");
-        assert!(!has(&d, "E232"), "{:?}", d);
+        assert!(!has(&d, "E232"), "{d:?}");
     }
 
     #[test]
@@ -1443,73 +1492,73 @@ mod tests {
     #[test]
     fn e233_require_allowed_inside_requirement() {
         let d = analyze("package P { requirement def R { require constraint { true } } }");
-        assert!(!has(&d, "E233"), "{:?}", d);
+        assert!(!has(&d, "E233"), "{d:?}");
     }
 
     #[test]
     fn e234_objective_outside_case() {
         let d = analyze("package P { requirement def R { objective o; } }");
-        assert!(has(&d, "E234"), "{:?}", d);
+        assert!(has(&d, "E234"), "{d:?}");
     }
 
     #[test]
     fn e234_objective_allowed_inside_case() {
         let d = analyze("package P { case def C { objective o; } }");
-        assert!(!has(&d, "E234"), "{:?}", d);
+        assert!(!has(&d, "E234"), "{d:?}");
     }
 
     #[test]
     fn e235_frame_outside_requirement() {
         let d = analyze("package P { concern def C; part def Robot { frame concern c : C; } }");
-        assert!(has(&d, "E235"), "{:?}", d);
+        assert!(has(&d, "E235"), "{d:?}");
     }
 
     #[test]
     fn e235_frame_allowed_inside_requirement() {
         let d = analyze("package P { concern def C; requirement def R { frame concern c : C; } }");
-        assert!(!has(&d, "E235"), "{:?}", d);
+        assert!(!has(&d, "E235"), "{d:?}");
     }
 
     #[test]
     fn e235_frame_allowed_inside_viewpoint() {
         let d = analyze("package P { concern def C; viewpoint def V { frame concern c : C; } }");
-        assert!(!has(&d, "E235"), "{:?}", d);
+        assert!(!has(&d, "E235"), "{d:?}");
     }
 
     #[test]
     fn e236_verify_outside_requirement() {
         let d = analyze("package P { part def Robot { verify; } }");
-        assert!(has(&d, "E236"), "{:?}", d);
+        assert!(has(&d, "E236"), "{d:?}");
     }
 
     #[test]
     fn e236_verify_allowed_inside_requirement() {
         let d = analyze("package P { requirement def R { verify; } }");
-        assert!(!has(&d, "E236"), "{:?}", d);
+        assert!(!has(&d, "E236"), "{d:?}");
     }
 
     #[test]
     fn e216_subject_allowed_inside_viewpoint() {
         let d = analyze("package P { part def Robot; viewpoint def V { subject r : Robot; } }");
-        assert!(!has(&d, "E216"), "{:?}", d);
+        assert!(!has(&d, "E216"), "{d:?}");
     }
 
     #[test]
     fn e231_actor_allowed_inside_viewpoint() {
         let d = analyze("package P { viewpoint def V { actor a; } }");
-        assert!(!has(&d, "E231"), "{:?}", d);
+        assert!(!has(&d, "E231"), "{d:?}");
     }
 
     #[test]
     fn e232_stakeholder_allowed_inside_viewpoint() {
         let d = analyze("package P { viewpoint def V { stakeholder s; } }");
-        assert!(!has(&d, "E232"), "{:?}", d);
+        assert!(!has(&d, "E232"), "{d:?}");
     }
 
     #[test]
     fn e233_require_allowed_inside_viewpoint() {
         let d = analyze("package P { viewpoint def V { require constraint { true } } }");
-        assert!(!has(&d, "E233"), "{:?}", d);
+        assert!(!has(&d, "E233"), "{d:?}");
     }
 
     #[test]
@@ -1527,7 +1576,7 @@ mod tests {
     #[test]
     fn e218_open_upper_bound_is_valid() {
         let d = analyze("package P { part def S; part def R { part s : S[0..*]; } }");
-        assert!(!has(&d, "E218"), "{:?}", d);
+        assert!(!has(&d, "E218"), "{d:?}");
     }
 
     #[test]
@@ -1539,7 +1588,7 @@ mod tests {
     #[test]
     fn e222_does_not_fire_inside_a_variation() {
         let d = analyze("package P { part def A; variation part def V { variant part v1 : A; } }");
-        assert!(!has(&d, "E222"), "{:?}", d);
+        assert!(!has(&d, "E222"), "{d:?}");
     }
 
     #[test]
@@ -1551,7 +1600,7 @@ mod tests {
     #[test]
     fn e227_does_not_fire_for_nested_packages_at_package_level() {
         let d = analyze("package P { package Sub { } }");
-        assert!(!has(&d, "E227"), "{:?}", d);
+        assert!(!has(&d, "E227"), "{d:?}");
     }
 
     #[test]
@@ -1566,7 +1615,7 @@ mod tests {
             }
         "#;
         let d = analyze(src);
-        assert!(has(&d, "E230"), "{:?}", d);
+        assert!(has(&d, "E230"), "{d:?}");
     }
 
     #[test]
@@ -1581,7 +1630,7 @@ mod tests {
             }
         "#;
         let d = analyze(src);
-        assert!(!has(&d, "E230"), "{:?}", d);
+        assert!(!has(&d, "E230"), "{d:?}");
     }
 
     #[test]
@@ -1599,7 +1648,7 @@ mod tests {
             }
         "#;
         let d = analyze(src);
-        assert!(has(&d, "E230"), "{:?}", d);
+        assert!(has(&d, "E230"), "{d:?}");
     }
 
     #[test]
@@ -1614,7 +1663,7 @@ mod tests {
             }
         "#;
         let d = analyze(src);
-        assert!(has(&d, "E230"), "{:?}", d);
+        assert!(has(&d, "E230"), "{d:?}");
     }
 
     #[test]
@@ -1629,7 +1678,7 @@ mod tests {
             }
         "#;
         let d = analyze(src);
-        assert!(has(&d, "E230"), "{:?}", d);
+        assert!(has(&d, "E230"), "{d:?}");
     }
 
     #[test]
@@ -1644,7 +1693,7 @@ mod tests {
             }
         "#;
         let d = analyze(src);
-        assert!(!has(&d, "E230"), "{:?}", d);
+        assert!(!has(&d, "E230"), "{d:?}");
     }
 
     #[test]
@@ -1670,139 +1719,135 @@ mod tests {
 
     #[test]
     fn w301_does_not_fire_once_imported() {
-        let d = analyze("package P { import ISQ::*; part def Robot { attribute masse : MassValue; } }");
-        assert!(!has(&d, "W301"), "{:?}", d);
+        let d =
+            analyze("package P { import ISQ::*; part def Robot { attribute masse : MassValue; } }");
+        assert!(!has(&d, "W301"), "{d:?}");
     }
 
     #[test]
     fn w307_requirement_def_without_subject() {
-        let mut o = Options::default();
-        o.pedantic = true;
-        let d = analyze_opts("package P { requirement def R { attribute x : Integer; } }", &o);
+        let o = pedantic();
+        let d = analyze_opts(
+            "package P { requirement def R { attribute x : Integer; } }",
+            &o,
+        );
         assert!(has(&d, "W307"));
     }
 
     #[test]
     fn w307_does_not_fire_once_a_subject_is_declared() {
-        let mut o = Options::default();
-        o.pedantic = true;
+        let o = pedantic();
         let d = analyze_opts(
             "package P { part def Robot; requirement def R { subject r : Robot; } }",
             &o,
         );
-        assert!(!has(&d, "W307"), "{:?}", d);
+        assert!(!has(&d, "W307"), "{d:?}");
     }
 
     #[test]
     fn w307_requires_pedantic_to_fire() {
         let d = analyze("package P { requirement def R { attribute x : Integer; } }");
-        assert!(!has(&d, "W307"), "{:?}", d);
+        assert!(!has(&d, "W307"), "{d:?}");
     }
 
     #[test]
     fn w311_readonly_flags_non_standard_keyword() {
-        let mut o = Options::default();
-        o.pedantic = true;
+        let o = pedantic();
         let d = analyze_opts(
             "package P { part def Robot { readonly attribute x : Integer; } }",
             &o,
         );
-        assert!(has(&d, "W311"), "{:?}", d);
+        assert!(has(&d, "W311"), "{d:?}");
     }
 
     #[test]
     fn w311_composite_flags_non_standard_keyword() {
-        let mut o = Options::default();
-        o.pedantic = true;
+        let o = pedantic();
         let d = analyze_opts(
             "package P { part def Robot; part def R { composite part r : Robot; } }",
             &o,
         );
-        assert!(has(&d, "W311"), "{:?}", d);
+        assert!(has(&d, "W311"), "{d:?}");
     }
 
     #[test]
     fn w311_portion_flags_non_standard_keyword() {
-        let mut o = Options::default();
-        o.pedantic = true;
+        let o = pedantic();
         let d = analyze_opts(
             "package P { part def Robot { portion attribute x : Integer; } }",
             &o,
         );
-        assert!(has(&d, "W311"), "{:?}", d);
+        assert!(has(&d, "W311"), "{d:?}");
     }
 
     #[test]
     fn w311_requires_pedantic_to_fire() {
         let d = analyze("package P { part def Robot { readonly attribute x : Integer; } }");
-        assert!(!has(&d, "W311"), "{:?}", d);
+        assert!(!has(&d, "W311"), "{d:?}");
     }
 
     #[test]
     fn w311_does_not_flag_standard_modifiers() {
-        let mut o = Options::default();
-        o.pedantic = true;
+        let o = pedantic();
         let d = analyze_opts(
             "package P { part def Robot { derived attribute x : Integer; } }",
             &o,
         );
-        assert!(!has(&d, "W311"), "{:?}", d);
+        assert!(!has(&d, "W311"), "{d:?}");
     }
 
     #[test]
     fn w312_flags_each_kerml_only_keyword() {
-        let mut o = Options::default();
-        o.pedantic = true;
+        let o = pedantic();
         let d = analyze_opts(
             "package P { feature x : Integer; namespace N { } specialization : Integer; subclassification : Integer; }",
             &o,
         );
         let count = d.iter().filter(|x| x.code == "W312").count();
-        assert_eq!(count, 4, "{:?}", d);
+        assert_eq!(count, 4, "{d:?}");
     }
 
     #[test]
     fn w312_requires_pedantic_to_fire() {
         let d = analyze("package P { feature x : Integer; }");
-        assert!(!has(&d, "W312"), "{:?}", d);
+        assert!(!has(&d, "W312"), "{d:?}");
     }
 
     #[test]
     fn w312_does_not_flag_standard_keywords() {
-        let mut o = Options::default();
-        o.pedantic = true;
+        let o = pedantic();
         let d = analyze_opts("package P { part def Robot; }", &o);
-        assert!(!has(&d, "W312"), "{:?}", d);
+        assert!(!has(&d, "W312"), "{d:?}");
     }
 
     #[test]
     fn w313_public_import_at_top_level() {
-        let mut o = Options::default();
-        o.pedantic = true;
+        let o = pedantic();
         let d = analyze_opts("package Q { part def X; } public import Q::X;", &o);
-        assert!(has(&d, "W313"), "{:?}", d);
+        assert!(has(&d, "W313"), "{d:?}");
     }
 
     #[test]
     fn w313_does_not_fire_on_private_top_level_import() {
-        let mut o = Options::default();
-        o.pedantic = true;
+        let o = pedantic();
         let d = analyze_opts("package Q { part def X; } private import Q::X;", &o);
-        assert!(!has(&d, "W313"), "{:?}", d);
+        assert!(!has(&d, "W313"), "{d:?}");
     }
 
     #[test]
     fn w313_does_not_fire_on_nested_import() {
-        let mut o = Options::default();
-        o.pedantic = true;
-        let d = analyze_opts("package Q { part def X; } package P { public import Q::X; }", &o);
-        assert!(!has(&d, "W313"), "{:?}", d);
+        let o = pedantic();
+        let d = analyze_opts(
+            "package Q { part def X; } package P { public import Q::X; }",
+            &o,
+        );
+        assert!(!has(&d, "W313"), "{d:?}");
     }
 
     #[test]
     fn w313_requires_pedantic_to_fire() {
         let d = analyze("package Q { part def X; } public import Q::X;");
-        assert!(!has(&d, "W313"), "{:?}", d);
+        assert!(!has(&d, "W313"), "{d:?}");
     }
 
     #[test]
@@ -1814,7 +1859,7 @@ mod tests {
             }
         "#;
         let d = analyze(src);
-        assert!(has(&d, "E201"), "{:?}", d);
+        assert!(has(&d, "E201"), "{d:?}");
     }
 
     #[test]
@@ -1826,7 +1871,7 @@ mod tests {
             }
         "#;
         let d = analyze(src);
-        assert!(!has(&d, "E201"), "{:?}", d);
+        assert!(!has(&d, "E201"), "{d:?}");
     }
 
     #[test]
@@ -1838,7 +1883,7 @@ mod tests {
             }
         "#;
         let d = analyze(src);
-        assert!(!has(&d, "E201"), "{:?}", d);
+        assert!(!has(&d, "E201"), "{d:?}");
     }
 
     #[test]
@@ -1850,7 +1895,7 @@ mod tests {
     #[test]
     fn w310_does_not_fire_once_ends_are_declared() {
         let d = analyze("package P { part def X; connection def C { end a : X; end b : X; } }");
-        assert!(!has(&d, "W310"), "{:?}", d);
+        assert!(!has(&d, "W310"), "{d:?}");
     }
 
     // -- Options CLI --------------------------------------------------------
@@ -1863,33 +1908,32 @@ mod tests {
 
     #[test]
     fn pedantic_rules_activate_with_the_flag() {
-        let mut o = Options::default();
-        o.pedantic = true;
+        let o = pedantic();
         let d = analyze_opts("package Empty { }", &o);
         assert!(has(&d, "W302"));
     }
 
     #[test]
     fn pedantic_naming_convention_flags_lowercase_definitions_and_uppercase_usages() {
-        let mut o = Options::default();
-        o.pedantic = true;
+        let o = pedantic();
         let d = analyze_opts("package p { part def robot; part Robot : robot; }", &o);
         let count = d.iter().filter(|x| x.code == "W306").count();
-        assert_eq!(count, 2, "{:?}", d);
+        assert_eq!(count, 2, "{d:?}");
     }
 
     #[test]
     fn pedantic_untyped_usage_flags_missing_type() {
-        let mut o = Options::default();
-        o.pedantic = true;
+        let o = pedantic();
         let d = analyze_opts("package P { part def Robot { part sensor; } }", &o);
         assert!(has(&d, "W309"));
     }
 
     #[test]
     fn unresolved_mode_off_suppresses_both_error_and_warning_variants() {
-        let mut o = Options::default();
-        o.unresolved = UnresolvedMode::Off;
+        let o = Options {
+            unresolved: UnresolvedMode::Off,
+            ..Default::default()
+        };
         let d = analyze_opts("package P { part def Robot { part s : Ghost; } }", &o);
         assert!(!has(&d, "E200"));
         assert!(!has(&d, "W200"));
@@ -1897,8 +1941,10 @@ mod tests {
 
     #[test]
     fn unresolved_mode_warn_downgrades_error_to_warning() {
-        let mut o = Options::default();
-        o.unresolved = UnresolvedMode::Warn;
+        let o = Options {
+            unresolved: UnresolvedMode::Warn,
+            ..Default::default()
+        };
         let d = analyze_opts("package P { part def Robot { part s : Ghost; } }", &o);
         assert!(has(&d, "W200"));
         assert_eq!(errors(&d), 0);
@@ -1913,7 +1959,11 @@ mod tests {
         let nodes_a = pa.parse_unit();
         assert!(pa.diags.is_empty());
 
-        let (toks_b, _) = Lexer::new("package Consumer { part def Robot { part s : Shared::Sensor; } }", 1).tokenize();
+        let (toks_b, _) = Lexer::new(
+            "package Consumer { part def Robot { part s : Shared::Sensor; } }",
+            1,
+        )
+        .tokenize();
         let mut pb = Parser::new(toks_b, 500);
         let nodes_b = pb.parse_unit();
         assert!(pb.diags.is_empty());
@@ -1922,6 +1972,6 @@ mod tests {
         all.extend(nodes_b);
         let model = Model::build(&all);
         let d = check(&model, &Options::default());
-        assert!(d.is_empty(), "{:?}", d);
+        assert!(d.is_empty(), "{d:?}");
     }
 }

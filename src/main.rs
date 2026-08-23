@@ -117,11 +117,11 @@ fn parse_args(args: Vec<String>) -> Result<Cli, String> {
         let a = args[i].clone();
         match a.as_str() {
             "-h" | "--help" => {
-                print!("{}", HELP);
+                print!("{HELP}");
                 std::process::exit(0);
             }
             "-V" | "--version" => {
-                println!("sysml-check {}", VERSION);
+                println!("sysml-check {VERSION}");
                 std::process::exit(0);
             }
             "--list-rules" => {
@@ -135,7 +135,7 @@ fn parse_args(args: Vec<String>) -> Result<Cli, String> {
                     "human" => Format::Human,
                     "json" => Format::Json,
                     "gitlab" => Format::Gitlab,
-                    other => return Err(format!("format inconnu : {}", other)),
+                    other => return Err(format!("format inconnu : {other}")),
                 };
             }
             "--emit" => {
@@ -145,7 +145,7 @@ fn parse_args(args: Vec<String>) -> Result<Cli, String> {
                     "diagnostics" => Emit::Diagnostics,
                     "ast" => Emit::Ast,
                     "both" => Emit::Both,
-                    other => return Err(format!("valeur --emit inconnue : {}", other)),
+                    other => return Err(format!("valeur --emit inconnue : {other}")),
                 };
             }
             "--stdin" => cli.stdin = true,
@@ -161,20 +161,22 @@ fn parse_args(args: Vec<String>) -> Result<Cli, String> {
                     "error" => UnresolvedMode::Error,
                     "warn" => UnresolvedMode::Warn,
                     "off" => UnresolvedMode::Off,
-                    other => return Err(format!("valeur --unresolved inconnue : {}", other)),
+                    other => return Err(format!("valeur --unresolved inconnue : {other}")),
                 };
             }
             "--deny-warnings" => cli.deny_warnings = true,
             "--max-diags" => {
                 i += 1;
                 let v = args.get(i).ok_or("--max-diags attend une valeur")?;
-                cli.max_diags = v.parse::<usize>().map_err(|_| "--max-diags attend un entier".to_string())?;
+                cli.max_diags = v
+                    .parse::<usize>()
+                    .map_err(|_| "--max-diags attend un entier".to_string())?;
             }
             "--color" => cli.color = true,
             "-q" | "--quiet" => cli.quiet = true,
             other => {
                 if other.starts_with('-') && other.len() > 1 {
-                    return Err(format!("option inconnue : {}", other));
+                    return Err(format!("option inconnue : {other}"));
                 }
                 cli.files.push(other.to_string());
             }
@@ -190,13 +192,13 @@ fn parse_args(args: Vec<String>) -> Result<Cli, String> {
 fn run() -> i32 {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() {
-        print!("{}", HELP);
+        print!("{HELP}");
         return 2;
     }
     let cli = match parse_args(args) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("sysml-check: {}", e);
+            eprintln!("sysml-check: {e}");
             return 2;
         }
     };
@@ -205,7 +207,7 @@ fn run() -> i32 {
     if cli.stdin {
         let mut buf = String::new();
         if let Err(e) = std::io::stdin().read_to_string(&mut buf) {
-            eprintln!("sysml-check: lecture de stdin impossible : {}", e);
+            eprintln!("sysml-check: lecture de stdin impossible : {e}");
             return 2;
         }
         files.push(FileInfo {
@@ -220,7 +222,7 @@ fn run() -> i32 {
                 src,
             }),
             Err(e) => {
-                eprintln!("sysml-check: {} : {}", p, e);
+                eprintln!("sysml-check: {p} : {e}");
                 return 2;
             }
         }
@@ -277,12 +279,18 @@ fn run() -> i32 {
     }
     let diags = unique;
 
-    let errors = diags.iter().filter(|d| d.severity == Severity::Error).count();
+    let errors = diags
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .count();
     let warnings = diags
         .iter()
         .filter(|d| d.severity == Severity::Warning)
         .count();
-    let infos = diags.iter().filter(|d| d.severity == Severity::Info).count();
+    let infos = diags
+        .iter()
+        .filter(|d| d.severity == Severity::Info)
+        .count();
 
     // 4. Sortie
     let stdout = std::io::stdout();
@@ -310,7 +318,7 @@ fn run() -> i32 {
                     files.len()
                 )
             };
-            let _ = writeln!(w, "{}", summary);
+            let _ = writeln!(w, "{summary}");
         }
         Format::Json => {
             let _ = writeln!(
@@ -391,14 +399,17 @@ fn emit_json(
 ) -> String {
     let mut s = String::new();
     s.push_str("{\n");
-    s.push_str(&format!("  \"tool\": \"sysml-check\",\n"));
+    s.push_str("  \"tool\": \"sysml-check\",\n");
     s.push_str(&format!("  \"version\": {},\n", json::qs(VERSION)));
     s.push_str("  \"summary\": {\n");
     s.push_str(&format!("    \"files\": {},\n", files.len()));
-    s.push_str(&format!("    \"errors\": {},\n", errors));
-    s.push_str(&format!("    \"warnings\": {},\n", warnings));
-    s.push_str(&format!("    \"infos\": {},\n", infos));
-    s.push_str(&format!("    \"ok\": {}\n", if errors == 0 { "true" } else { "false" }));
+    s.push_str(&format!("    \"errors\": {errors},\n"));
+    s.push_str(&format!("    \"warnings\": {warnings},\n"));
+    s.push_str(&format!("    \"infos\": {infos},\n"));
+    s.push_str(&format!(
+        "    \"ok\": {}\n",
+        if errors == 0 { "true" } else { "false" }
+    ));
     s.push_str("  },\n");
 
     if emit != Emit::Ast {
@@ -458,10 +469,18 @@ fn emit_sym_json(model: &Model, files: &[FileInfo], id: usize, depth: usize, out
         .map(|f| f.path.as_str())
         .unwrap_or("<inconnu>");
 
-    out.push_str(&format!("{}{{\n", pad));
-    out.push_str(&format!("{}  \"id\": {},\n", pad, id));
-    out.push_str(&format!("{}  \"kind\": {},\n", pad, json::qs(s.kind.as_str())));
-    out.push_str(&format!("{}  \"keyword\": {},\n", pad, json::qs(&s.keyword)));
+    out.push_str(&format!("{pad}{{\n"));
+    out.push_str(&format!("{pad}  \"id\": {id},\n"));
+    out.push_str(&format!(
+        "{}  \"kind\": {},\n",
+        pad,
+        json::qs(s.kind.as_str())
+    ));
+    out.push_str(&format!(
+        "{}  \"keyword\": {},\n",
+        pad,
+        json::qs(&s.keyword)
+    ));
     out.push_str(&format!(
         "{}  \"name\": {},\n",
         pad,
@@ -516,7 +535,7 @@ fn emit_sym_json(model: &Model, files: &[FileInfo], id: usize, depth: usize, out
             ));
         }
         None => {
-            out.push_str(&format!("{}  \"multiplicity\": null,\n", pad));
+            out.push_str(&format!("{pad}  \"multiplicity\": null,\n"));
         }
     }
     out.push_str(&format!("{}  \"file\": {},\n", pad, json::qs(path)));
@@ -524,9 +543,9 @@ fn emit_sym_json(model: &Model, files: &[FileInfo], id: usize, depth: usize, out
     out.push_str(&format!("{}  \"column\": {},\n", pad, s.span.col));
 
     if s.children.is_empty() {
-        out.push_str(&format!("{}  \"children\": []\n", pad));
+        out.push_str(&format!("{pad}  \"children\": []\n"));
     } else {
-        out.push_str(&format!("{}  \"children\": [\n", pad));
+        out.push_str(&format!("{pad}  \"children\": [\n"));
         for (i, &c) in s.children.iter().enumerate() {
             emit_sym_json(model, files, c, depth + 2, out);
             if i + 1 < s.children.len() {
@@ -534,9 +553,9 @@ fn emit_sym_json(model: &Model, files: &[FileInfo], id: usize, depth: usize, out
             }
             out.push('\n');
         }
-        out.push_str(&format!("{}  ]\n", pad));
+        out.push_str(&format!("{pad}  ]\n"));
     }
-    out.push_str(&format!("{}}}", pad));
+    out.push_str(&format!("{pad}}}"));
 }
 
 fn emit_ast_json(model: &Model, files: &[FileInfo]) -> String {

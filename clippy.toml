@@ -1,0 +1,3 @@
+# Clippy ne doit jamais suggérer une API plus récente que la MSRV déclarée
+# dans Cargo.toml (`rust-version`), sous peine de casser le job CI « MSRV ».
+msrv = "1.65"

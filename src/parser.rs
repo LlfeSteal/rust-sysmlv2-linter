@@ -12,25 +12,119 @@ use crate::lexer::{TokKind, Token};
 /// Mots-clés pouvant introduire un membre.
 pub const MEMBER_KWS: &[&str] = &[
     // structure
-    "package", "import", "alias", "doc", "comment", "rep", "dependency", "filter", "namespace",
-    "feature", "metadata", "specialization", "subclassification",
+    "package",
+    "import",
+    "alias",
+    "doc",
+    "comment",
+    "rep",
+    "dependency",
+    "filter",
+    "namespace",
+    "feature",
+    "metadata",
+    "specialization",
+    "subclassification",
     // définitions / usages
-    "part", "item", "attribute", "port", "interface", "connection", "action", "state", "calc",
-    "constraint", "requirement", "concern", "case", "enum", "occurrence", "allocation", "flow",
-    "view", "viewpoint", "rendering", "ref", "event", "message", "snapshot", "timeslice",
-    "individual", "analysis", "verification", "use",
+    "part",
+    "item",
+    "attribute",
+    "port",
+    "interface",
+    "connection",
+    "action",
+    "state",
+    "calc",
+    "constraint",
+    "requirement",
+    "concern",
+    "case",
+    "enum",
+    "occurrence",
+    "allocation",
+    "flow",
+    "view",
+    "viewpoint",
+    "rendering",
+    "ref",
+    "event",
+    "message",
+    "snapshot",
+    "timeslice",
+    "individual",
+    "analysis",
+    "verification",
+    "use",
     // relations
-    "connect", "bind", "binding", "succession", "transition", "satisfy", "allocate",
+    "connect",
+    "bind",
+    "binding",
+    "succession",
+    "transition",
+    "satisfy",
+    "allocate",
     // comportement / exigences
-    "perform", "exhibit", "include", "assert", "assume", "require", "verify", "frame", "expose",
-    "render", "subject", "actor", "stakeholder", "objective", "return", "accept", "send", "assign",
-    "entry", "exit", "do", "then", "first", "if", "else", "for", "while", "loop", "decide",
-    "merge", "fork", "join", "terminate", "end", "in", "out", "inout", "variant",
+    "perform",
+    "exhibit",
+    "include",
+    "assert",
+    "assume",
+    "require",
+    "verify",
+    "frame",
+    "expose",
+    "render",
+    "subject",
+    "actor",
+    "stakeholder",
+    "objective",
+    "return",
+    "accept",
+    "send",
+    "assign",
+    "entry",
+    "exit",
+    "do",
+    "then",
+    "first",
+    "if",
+    "else",
+    "for",
+    "while",
+    "loop",
+    "decide",
+    "merge",
+    "fork",
+    "join",
+    "terminate",
+    "end",
+    "in",
+    "out",
+    "inout",
+    "variant",
     // modificateurs qui peuvent aussi commencer un membre
-    "abstract", "variation", "readonly", "derived", "constant", "composite", "portion", "ordered",
-    "nonunique", "public", "private", "protected", "standard", "library",
+    "abstract",
+    "variation",
+    "readonly",
+    "derived",
+    "constant",
+    "composite",
+    "portion",
+    "ordered",
+    "nonunique",
+    "public",
+    "private",
+    "protected",
+    "standard",
+    "library",
     // hérités SysML v1 / UML : acceptés pour pouvoir les diagnostiquer proprement
-    "block", "value", "class", "association", "stereotype", "property", "operation",
+    "block",
+    "value",
+    "class",
+    "association",
+    "stereotype",
+    "property",
+    "operation",
 ];
 
 /// Modificateurs pouvant précéder un mot-clé de membre.
@@ -67,15 +161,47 @@ const WRAPPER_KWS: &[&str] = &[
 
 /// Membres dont la suite est une expression libre (consommée en bloc).
 const BLOB_KWS: &[&str] = &[
-    "accept", "send", "assign", "return", "if", "else", "for", "while", "loop", "decide", "merge",
-    "fork", "join", "terminate", "then", "first", "entry", "exit", "do", "filter", "assert",
-    "assume", "require", "expose",
+    "accept",
+    "send",
+    "assign",
+    "return",
+    "if",
+    "else",
+    "for",
+    "while",
+    "loop",
+    "decide",
+    "merge",
+    "fork",
+    "join",
+    "terminate",
+    "then",
+    "first",
+    "entry",
+    "exit",
+    "do",
+    "filter",
+    "assert",
+    "assume",
+    "require",
+    "expose",
 ];
 
 /// Mots-clés pouvant suivre une déclaration (`connection c : C connect a to b;`).
 const TAIL_KWS: &[&str] = &[
-    "connect", "from", "to", "then", "first", "accept", "by", "of", "about", "via", "when",
-    "references", "default",
+    "connect",
+    "from",
+    "to",
+    "then",
+    "first",
+    "accept",
+    "by",
+    "of",
+    "about",
+    "via",
+    "when",
+    "references",
+    "default",
 ];
 
 /// Mots-clés d'expression : ne sont jamais des références de noms.
@@ -87,9 +213,33 @@ const EXPR_KWS: &[&str] = &[
 
 /// Mots-clés qui ne peuvent pas être un nom déclaré.
 const DECL_STOP_KWS: &[&str] = &[
-    "specializes", "subsets", "redefines", "references", "conjugates", "crosses", "defined",
-    "ordered", "nonunique", "default", "connect", "from", "to", "then", "first", "accept", "by",
-    "of", "about", "for", "in", "when", "via", "do", "entry", "exit", "if",
+    "specializes",
+    "subsets",
+    "redefines",
+    "references",
+    "conjugates",
+    "crosses",
+    "defined",
+    "ordered",
+    "nonunique",
+    "default",
+    "connect",
+    "from",
+    "to",
+    "then",
+    "first",
+    "accept",
+    "by",
+    "of",
+    "about",
+    "for",
+    "in",
+    "when",
+    "via",
+    "do",
+    "entry",
+    "exit",
+    "if",
 ];
 
 /// Mots-clés SysML v1 / UML qui n'existent pas en SysML v2.
@@ -142,16 +292,23 @@ fn is_relationship_kw(kw: &str, is_def: bool) -> bool {
     // Le dernier mot, pas le premier : `assert satisfy` (négation/assertion
     // optionnelles devant une relation, cf. `parse_member`) doit rester
     // reconnu comme relation `satisfy`, pas comme `assert`.
-    let last = kw.split(' ').last().unwrap_or("");
+    let last = kw.split(' ').next_back().unwrap_or("");
     matches!(
         last,
-        "connect" | "bind" | "binding" | "flow" | "succession" | "transition" | "satisfy"
-            | "allocate" | "dependency"
+        "connect"
+            | "bind"
+            | "binding"
+            | "flow"
+            | "succession"
+            | "transition"
+            | "satisfy"
+            | "allocate"
+            | "dependency"
     )
 }
 
 fn base_ctx_for(kw: &str) -> RefCtx {
-    let last = kw.split(' ').last().unwrap_or("");
+    let last = kw.split(' ').next_back().unwrap_or("");
     match last {
         "connect" => RefCtx::ConnectEnd,
         "bind" | "binding" => RefCtx::BindEnd,
@@ -238,7 +395,11 @@ impl Parser {
 
     fn peek(&self, k: usize) -> &Token {
         let last = self.toks.len() - 1;
-        let i = if self.pos + k > last { last } else { self.pos + k };
+        let i = if self.pos + k > last {
+            last
+        } else {
+            self.pos + k
+        };
         &self.toks[i]
     }
 
@@ -310,7 +471,7 @@ impl Parser {
             "E101",
             "expected-token",
             span,
-            format!("{} attendu après `{}`, trouvé {}", what, ctx, found),
+            format!("{what} attendu après `{ctx}`, trouvé {found}"),
         ));
     }
 
@@ -511,7 +672,10 @@ impl Parser {
         // n'est pas un mot-clé de membre, seul ce qui le suit l'est.
         if self.at_kw("not") {
             let after = self.peek(1).clone();
-            if after.kind == TokKind::Ident && !after.quoted && is_relationship_kw(&after.text, false) {
+            if after.kind == TokKind::Ident
+                && !after.quoted
+                && is_relationship_kw(&after.text, false)
+            {
                 let t = self.bump();
                 node.prefixes.push(Spanned::new(t.text.clone(), t.span));
             }
@@ -527,7 +691,7 @@ impl Parser {
                     "E100",
                     "member-must-start-with-keyword",
                     span,
-                    format!("membre inattendu : {}", found),
+                    format!("membre inattendu : {found}"),
                 )
                 .hint(
                     "en SysML v2 chaque membre commence par un mot-clé (`part`, `attribute`, \
@@ -598,7 +762,10 @@ impl Parser {
         // `assert` plutôt que la précéder (cf. le premier bloc `not` plus haut).
         if self.at_kw("not") {
             let after = self.peek(1).clone();
-            if after.kind == TokKind::Ident && !after.quoted && is_relationship_kw(&after.text, false) {
+            if after.kind == TokKind::Ident
+                && !after.quoted
+                && is_relationship_kw(&after.text, false)
+            {
                 let t = self.bump();
                 node.prefixes.push(Spanned::new(t.text.clone(), t.span));
                 let rel = self.bump();
@@ -670,7 +837,10 @@ impl Parser {
                         "E225",
                         "reserved-word-as-name",
                         t.span,
-                        format!("`{}` est un mot-clé SysML v2 et ne peut pas servir de nom", t.text),
+                        format!(
+                            "`{}` est un mot-clé SysML v2 et ne peut pas servir de nom",
+                            t.text
+                        ),
                     )
                     .hint(format!(
                         "renomme l'élément, ou échappe-le avec des apostrophes : `'{}'`",
@@ -894,7 +1064,9 @@ impl Parser {
                     span,
                     "`;` manquant avant le membre suivant".to_string(),
                 )
-                .hint("chaque déclaration se termine par `;` ou par un corps `{ ... }`".to_string()),
+                .hint(
+                    "chaque déclaration se termine par `;` ou par un corps `{ ... }`".to_string(),
+                ),
             );
             return;
         }
@@ -906,7 +1078,7 @@ impl Parser {
                 "E100",
                 "unexpected-token",
                 span,
-                format!("{} inattendu dans cette déclaration", found),
+                format!("{found} inattendu dans cette déclaration"),
             )
             .hint(
                 "attendu ici : `:` (typage), `:>` (spécialisation), `[..]` (multiplicité), \
@@ -970,7 +1142,7 @@ impl Parser {
                         "E100",
                         "member-must-start-with-keyword",
                         span,
-                        format!("membre inattendu : {}", found),
+                        format!("membre inattendu : {found}"),
                     )
                     .hint(
                         "il manque probablement un mot-clé : écris par exemple \
@@ -1026,7 +1198,10 @@ impl Parser {
                 }
                 let before = self.pos;
                 match self.parse_qname(false) {
-                    Some(q) => node.refs.push(RefUse { qname: q, ctx: base }),
+                    Some(q) => node.refs.push(RefUse {
+                        qname: q,
+                        ctx: base,
+                    }),
                     None => {
                         self.bump();
                     }
@@ -1176,7 +1351,10 @@ impl Parser {
 
     fn parse_doc_tail(&mut self, node: &mut Node) {
         let ct = self.cur().clone();
-        if ct.kind == TokKind::Ident && !ct.is_ident("locale") && (ct.quoted || !is_member_kw(&ct.text)) {
+        if ct.kind == TokKind::Ident
+            && !ct.is_ident("locale")
+            && (ct.quoted || !is_member_kw(&ct.text))
+        {
             let t = self.bump();
             node.name = Some(Spanned::new(t.text.clone(), t.span));
             node.name_quoted = t.quoted;
@@ -1211,7 +1389,9 @@ impl Parser {
     /// alternative (`TextualRepresentation`), même mécanique que `doc`.
     fn parse_rep_tail(&mut self, node: &mut Node) {
         let ct = self.cur().clone();
-        if ct.kind == TokKind::Ident && !ct.is_ident("language") && (ct.quoted || !is_member_kw(&ct.text))
+        if ct.kind == TokKind::Ident
+            && !ct.is_ident("language")
+            && (ct.quoted || !is_member_kw(&ct.text))
         {
             let t = self.bump();
             node.name = Some(Spanned::new(t.text.clone(), t.span));
@@ -1236,7 +1416,9 @@ impl Parser {
                         span,
                         "`rep` sans corps de représentation".to_string(),
                     )
-                    .hint("une représentation s'écrit `rep language \"OCL\" /* ... */`".to_string()),
+                    .hint(
+                        "une représentation s'écrit `rep language \"OCL\" /* ... */`".to_string(),
+                    ),
                 );
             }
         }
@@ -1360,6 +1542,19 @@ impl Parser {
             span,
         })
     }
+}
+
+fn join_tokens(toks: &[Token], fallback: Span) -> Spanned {
+    if toks.is_empty() {
+        return Spanned::new(String::new(), fallback);
+    }
+    let mut s = String::new();
+    let mut span = toks[0].span;
+    for t in toks {
+        s.push_str(&t.text);
+        span = Span::join(span, t.span);
+    }
+    Spanned::new(s, span)
 }
 
 #[cfg(test)]
@@ -1505,7 +1700,10 @@ mod tests {
     fn usage_subsets_with_arrow_colon_greater() {
         let (nodes, d) = parse("package P { part def A; part def R { part a : A; part b :> a; } }");
         assert!(d.is_empty(), "{:?}", codes(&d));
-        assert_eq!(nodes[0].children[1].children[1].rels[0].kind, RelKind::Subsets);
+        assert_eq!(
+            nodes[0].children[1].children[1].rels[0].kind,
+            RelKind::Subsets
+        );
     }
 
     #[test]
@@ -1520,7 +1718,7 @@ mod tests {
     fn nesting_deeper_than_the_limit_reports_e105() {
         let mut src = String::from("package P { ");
         for i in 0..70 {
-            src.push_str(&format!("part def A{} {{ ", i));
+            src.push_str(&format!("part def A{i} {{ "));
         }
         for _ in 0..70 {
             src.push_str("} ");
@@ -1534,7 +1732,7 @@ mod tests {
     fn nesting_within_the_limit_does_not_report_e105() {
         let mut src = String::from("package P { ");
         for i in 0..10 {
-            src.push_str(&format!("part def A{} {{ ", i));
+            src.push_str(&format!("part def A{i} {{ "));
         }
         for _ in 0..10 {
             src.push_str("} ");
@@ -1557,7 +1755,8 @@ mod tests {
 
     #[test]
     fn crosses_arrow_operator_is_recognized_as_crosses_rel() {
-        let (nodes, d) = parse("package P { part def A; part def Link { part x : A; attribute cross => x; } }");
+        let (nodes, d) =
+            parse("package P { part def A; part def Link { part x : A; attribute cross => x; } }");
         assert!(d.is_empty(), "{:?}", codes(&d));
         let cross = &nodes[0].children[1].children[1];
         assert_eq!(cross.rels[0].kind, RelKind::Crosses);
@@ -1566,7 +1765,9 @@ mod tests {
 
     #[test]
     fn crosses_keyword_form_is_recognized_as_crosses_rel() {
-        let (nodes, d) = parse("package P { part def A; part def Link { part x : A; attribute cross crosses x; } }");
+        let (nodes, d) = parse(
+            "package P { part def A; part def Link { part x : A; attribute cross crosses x; } }",
+        );
         assert!(d.is_empty(), "{:?}", codes(&d));
         let cross = &nodes[0].children[1].children[1];
         assert_eq!(cross.rels[0].kind, RelKind::Crosses);
@@ -1634,7 +1835,8 @@ mod tests {
 
     #[test]
     fn constant_prefix_is_accepted_before_a_member_keyword() {
-        let (nodes, d) = parse("package P { part def Robot { constant attribute pi : Real = 3; } }");
+        let (nodes, d) =
+            parse("package P { part def Robot { constant attribute pi : Real = 3; } }");
         assert!(d.is_empty(), "{:?}", codes(&d));
         let pi = &nodes[0].children[0].children[0];
         assert!(pi.has_prefix("constant"));
@@ -1656,7 +1858,9 @@ mod tests {
     fn hash_prefix_annotation_still_requires_a_following_member() {
         // `#Meta` reste une simple annotation-préfixe : contrairement à `@`,
         // elle ne forme jamais un membre autonome.
-        let (nodes, d) = parse("package P { metadata def MyMeta; part def Engine { #MyMeta part def Sensor; } }");
+        let (nodes, d) = parse(
+            "package P { metadata def MyMeta; part def Engine { #MyMeta part def Sensor; } }",
+        );
         assert!(d.is_empty(), "{:?}", codes(&d));
         let sensor = &nodes[0].children[1].children[0];
         assert_eq!(sensor.keyword, "part def");
@@ -1680,12 +1884,17 @@ mod tests {
             nodes[0].import_target.as_ref().unwrap().wildcard.as_deref(),
             Some("**")
         );
-        assert_eq!(nodes[0].import_target.as_ref().unwrap().text(), "ISQ::MassValue::**");
+        assert_eq!(
+            nodes[0].import_target.as_ref().unwrap().text(),
+            "ISQ::MassValue::**"
+        );
     }
 
     #[test]
     fn rep_textual_representation_parses_with_language_and_body() {
-        let (nodes, d) = parse(r#"package P { part def Robot { rep myRep language "OCL" /* self.mass > 0 */; } }"#);
+        let (nodes, d) = parse(
+            r#"package P { part def Robot { rep myRep language "OCL" /* self.mass > 0 */; } }"#,
+        );
         assert!(d.is_empty(), "{:?}", codes(&d));
         let rep = &nodes[0].children[0].children[0];
         assert_eq!(rep.keyword, "rep");
@@ -1723,7 +1932,9 @@ mod tests {
 
     #[test]
     fn comment_with_about_and_locale_parses() {
-        let (nodes, d) = parse(r#"package P { part def Robot; comment C about Robot locale "fr" /* bonjour */; } "#);
+        let (nodes, d) = parse(
+            r#"package P { part def Robot; comment C about Robot locale "fr" /* bonjour */; } "#,
+        );
         assert!(d.is_empty(), "{:?}", codes(&d));
         let c = &nodes[0].children[1];
         assert_eq!(c.refs[0].ctx, RefCtx::About);
@@ -1748,17 +1959,4 @@ mod tests {
         let expose = &nodes[1].children[0];
         assert_eq!(expose.refs[0].ctx, RefCtx::ExposeTarget);
     }
-}
-
-fn join_tokens(toks: &[Token], fallback: Span) -> Spanned {
-    if toks.is_empty() {
-        return Spanned::new(String::new(), fallback);
-    }
-    let mut s = String::new();
-    let mut span = toks[0].span;
-    for t in toks {
-        s.push_str(&t.text);
-        span = Span::join(span, t.span);
-    }
-    Spanned::new(s, span)
 }

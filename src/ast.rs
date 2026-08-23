@@ -256,7 +256,7 @@ pub fn classify(kw: &str, is_def: bool) -> NodeKind {
     }
     // Le dernier mot : `assert satisfy` doit rester une relation `satisfy`,
     // pas un `assert` générique (voir `parser::is_relationship_kw`).
-    let last = kw.split(' ').last().unwrap_or("");
+    let last = kw.split(' ').next_back().unwrap_or("");
     match last {
         "connect" | "bind" | "binding" | "flow" | "succession" | "transition" | "satisfy"
         | "allocate" | "dependency" => NodeKind::Relationship,

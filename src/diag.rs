@@ -115,7 +115,12 @@ impl Diagnostic {
         }
     }
 
-    pub fn error(code: &'static str, rule: &'static str, span: Span, message: String) -> Diagnostic {
+    pub fn error(
+        code: &'static str,
+        rule: &'static str,
+        span: Span,
+        message: String,
+    ) -> Diagnostic {
         Diagnostic::new(code, rule, Severity::Error, span, message)
     }
 
@@ -200,11 +205,18 @@ pub fn render_human(d: &Diagnostic, path: &str, src: &str, color: bool) -> Strin
     let mut out = String::new();
     out.push_str(&format!(
         "{}{}{}[{}]{}: {}{}{}\n",
-        p.bold, sev_color, d.severity.label_fr(), d.code, p.reset, p.bold, d.message, p.reset
+        p.bold,
+        sev_color,
+        d.severity.label_fr(),
+        d.code,
+        p.reset,
+        p.bold,
+        d.message,
+        p.reset
     ));
 
     let line_no = d.span.line;
-    let gutter_w = format!("{}", line_no).len().max(2);
+    let gutter_w = format!("{line_no}").len().max(2);
     let pad = " ".repeat(gutter_w);
 
     out.push_str(&format!(
@@ -212,7 +224,10 @@ pub fn render_human(d: &Diagnostic, path: &str, src: &str, color: bool) -> Strin
         p.dim, pad, path, d.span.line, d.span.col, p.reset
     ));
 
-    let raw = src.lines().nth((line_no.saturating_sub(1)) as usize).unwrap_or("");
+    let raw = src
+        .lines()
+        .nth((line_no.saturating_sub(1)) as usize)
+        .unwrap_or("");
     let shown = line_text(src, line_no);
     let disp_col = tab_adjusted_col(raw, d.span.col);
 
@@ -231,7 +246,7 @@ pub fn render_human(d: &Diagnostic, path: &str, src: &str, color: bool) -> Strin
     } else {
         1
     };
-    let caret = "^".repeat(caret_len.max(1).min(200));
+    let caret = "^".repeat(caret_len.clamp(1, 200));
     out.push_str(&format!(
         "{}{} |{} {}{}{}{}\n",
         p.dim,
