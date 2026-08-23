@@ -504,11 +504,9 @@ impl Parser {
                         }
                         depth -= 1;
                     }
-                    ";" => {
-                        if depth == 0 {
-                            self.bump();
-                            return;
-                        }
+                    ";" if depth == 0 => {
+                        self.bump();
+                        return;
                     }
                     _ => {}
                 }
@@ -1241,11 +1239,7 @@ impl Parser {
                         }
                         depth -= 1;
                     }
-                    ";" | "{" | "}" => {
-                        if depth == 0 {
-                            break;
-                        }
-                    }
+                    ";" | "{" | "}" if depth == 0 => break,
                     _ => {}
                 }
             }
