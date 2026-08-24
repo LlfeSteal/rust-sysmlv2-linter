@@ -26,6 +26,18 @@ jobs:
       - uses: actions/checkout@v4
       - run: cargo fmt --all --check
 
+  generated:
+    name: fichiers générés à jour
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      # `src/spec.rs` et `src/stdlib.rs` sont dérivés des index vendus dans
+      # `spec/`. On vérifie la régénération, pas le réseau : `--fetch` (qui
+      # interroge l'OMG et GitHub) reste manuel.
+      - run: python3 tools/gen-spec-table.py --check
+      - run: python3 tools/gen-stdlib.py --check
+
   clippy:
     name: clippy
     runs-on: ubuntu-latest
