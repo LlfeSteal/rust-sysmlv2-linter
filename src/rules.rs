@@ -320,8 +320,14 @@ fn build_ctx(m: &Model) -> Ctx {
                 imported_roots.insert(p.text.clone());
             }
             if imp.wildcard.is_some() && !stdlib::is_library_root(&root) {
+                // Résoudre depuis la portée *de l'import*, pas depuis la racine :
+                // `package A { private import B::**; }` vise le frère `B`, que
+                // le contexte racine ne voit pas. Résoudre en 0 le déclarait
+                // opaque, et un seul import mal classé suffisait à faire
+                // basculer tous les E200 du fichier en W200.
                 let mut r = Resolver::new(m);
-                if !matches!(r.resolve(0, imp), Res::Local(_)) {
+                if !matches!(r.resolve(s.id, imp), Res::Local(_)) {
+
                     opaque_wildcard = true;
                 }
             }
@@ -1795,6 +1801,19 @@ mod tests {
     fn w301_standard_library_type_used_without_import() {
         let d = analyze("package P { part def Robot { attribute masse : MassValue; } }");
         assert!(has(&d, "W301"));
+    }
+
+    #[test]
+    fn sibling_wildcard_import_does_not_soften_the_whole_file() {
+        // `package A { import B::**; }` vise le paquet frère `B`. Résoudre cet
+        // import depuis la racine le déclarait opaque, ce qui faisait basculer
+        // *tous* les noms non résolus du fichier de E200 en W200.
+        let d = analyze(
+            "package Top { package A { private import B::**; part def X : Absent; } \
+             package B { part def Y; } }",
+        );
+        assert!(has(&d, "E200"), "{d:?}");
+        assert!(!has(&d, "W200"), "{d:?}");
     }
 
     #[test]
