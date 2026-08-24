@@ -12,6 +12,7 @@ mod lexer;
 mod model;
 mod parser;
 mod rules;
+mod spec;
 mod stdlib;
 
 use std::io::Read;

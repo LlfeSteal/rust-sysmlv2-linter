@@ -241,6 +241,131 @@ impl Node {
     }
 }
 
+/// Métaclasse SysML v2 correspondant à un mot-clé de déclaration.
+///
+/// **Écrit à la main** — c'est le seul pont que le métamodèle ne peut pas
+/// fournir : `SysML.json` décrit la syntaxe *abstraite* (les métaclasses),
+/// jamais la notation textuelle. Les mots-clés viennent donc de la grammaire
+/// de référence, `SysML.xtext` (`UseCaseKeyword: 'use' 'case';`,
+/// `VerificationCaseDefKeyword: 'verification' 'def';`, ...).
+///
+/// `None` signifie « ce mot-clé ne déclare pas un type porteur de membres »
+/// (`doc`, `import`, `alias`, une relation, ...) — pas « mot-clé invalide ».
+/// Les règles de portée s'appuient sur cette distinction : un parent sans
+/// métaclasse ne déclenche aucun diagnostic, il faut donc que la table couvre
+/// réellement tous les contextes déclaratifs.
+///
+/// Chaque nom produit ici est vérifié contre le métamodèle par le test
+/// `every_metaclass_exists` (`src/spec.rs` fait foi).
+pub fn metaclass_for(kw: &str, is_def: bool) -> Option<&'static str> {
+    // `assert satisfy` / `not satisfy` restent des `satisfy` : c'est le dernier
+    // mot qui porte le sens (même convention que `classify` ci-dessous).
+    let last = kw.split(' ').next_back().unwrap_or("");
+    let base = kw.strip_suffix(" def").unwrap_or(kw);
+
+    // Racines « Definition / Usage » : même mot-clé, le suffixe `def` décide.
+    let stem = match base {
+        "part" => "Part",
+        "item" => "Item",
+        "attribute" => "Attribute",
+        "port" => "Port",
+        "action" => "Action",
+        "state" => "State",
+        "constraint" => "Constraint",
+        "calc" => "Calculation",
+        "connection" => "Connection",
+        "interface" => "Interface",
+        "allocation" => "Allocation",
+        "flow" => "Flow",
+        "occurrence" => "Occurrence",
+        "metadata" => "Metadata",
+        "enum" => "Enumeration",
+        "view" => "View",
+        "rendering" => "Rendering",
+        "requirement" => "Requirement",
+        "concern" => "Concern",
+        "viewpoint" => "Viewpoint",
+        "case" => "Case",
+        "use case" => "UseCase",
+        // `analysis def` / `verification def` : la grammaire n'écrit pas
+        // « case » (`VerificationCaseDefKeyword: 'verification' 'def';`), mais
+        // la métaclasse, elle, s'appelle bien `VerificationCaseDefinition`.
+        "analysis" | "analysis case" => "AnalysisCase",
+        "verification" | "verification case" => "VerificationCase",
+        _ => {
+            return match last {
+                // Un `SatisfyRequirementUsage` *est* une `RequirementUsage` :
+                // il peut donc porter subject/actor/stakeholder/require/...
+                "satisfy" => Some("SatisfyRequirementUsage"),
+                // Le corps d'un `objective` *est* une `RequirementUsage`
+                // (`ObjectiveMembership::ownedObjectiveRequirement`), ce qui
+                // rend `verify` légal à l'intérieur — et lui seul.
+                "objective" => Some("RequirementUsage"),
+                "ref" => Some("ReferenceUsage"),
+                "include" => Some("IncludeUseCaseUsage"),
+                "perform" => Some("PerformActionUsage"),
+                "exhibit" => Some("ExhibitStateUsage"),
+                "event" => Some("EventOccurrenceUsage"),
+                "transition" => Some("TransitionUsage"),
+                _ => None,
+            };
+        }
+    };
+
+    // `Definition` et `Usage` existent pour chacune des racines ci-dessus.
+    Some(match (stem, is_def) {
+        ("Part", true) => "PartDefinition",
+        ("Part", false) => "PartUsage",
+        ("Item", true) => "ItemDefinition",
+        ("Item", false) => "ItemUsage",
+        ("Attribute", true) => "AttributeDefinition",
+        ("Attribute", false) => "AttributeUsage",
+        ("Port", true) => "PortDefinition",
+        ("Port", false) => "PortUsage",
+        ("Action", true) => "ActionDefinition",
+        ("Action", false) => "ActionUsage",
+        ("State", true) => "StateDefinition",
+        ("State", false) => "StateUsage",
+        ("Constraint", true) => "ConstraintDefinition",
+        ("Constraint", false) => "ConstraintUsage",
+        ("Calculation", true) => "CalculationDefinition",
+        ("Calculation", false) => "CalculationUsage",
+        ("Connection", true) => "ConnectionDefinition",
+        ("Connection", false) => "ConnectionUsage",
+        ("Interface", true) => "InterfaceDefinition",
+        ("Interface", false) => "InterfaceUsage",
+        ("Allocation", true) => "AllocationDefinition",
+        ("Allocation", false) => "AllocationUsage",
+        ("Flow", true) => "FlowDefinition",
+        ("Flow", false) => "FlowUsage",
+        ("Occurrence", true) => "OccurrenceDefinition",
+        ("Occurrence", false) => "OccurrenceUsage",
+        ("Metadata", true) => "MetadataDefinition",
+        ("Metadata", false) => "MetadataUsage",
+        ("Enumeration", true) => "EnumerationDefinition",
+        ("Enumeration", false) => "EnumerationUsage",
+        ("View", true) => "ViewDefinition",
+        ("View", false) => "ViewUsage",
+        ("Rendering", true) => "RenderingDefinition",
+        ("Rendering", false) => "RenderingUsage",
+        ("Requirement", true) => "RequirementDefinition",
+        ("Requirement", false) => "RequirementUsage",
+        ("Concern", true) => "ConcernDefinition",
+        ("Concern", false) => "ConcernUsage",
+        ("Viewpoint", true) => "ViewpointDefinition",
+        ("Viewpoint", false) => "ViewpointUsage",
+        ("Case", true) => "CaseDefinition",
+        ("Case", false) => "CaseUsage",
+        ("UseCase", true) => "UseCaseDefinition",
+        ("UseCase", false) => "UseCaseUsage",
+        ("AnalysisCase", true) => "AnalysisCaseDefinition",
+        ("AnalysisCase", false) => "AnalysisCaseUsage",
+        ("VerificationCase", true) => "VerificationCaseDefinition",
+        ("VerificationCase", false) => "VerificationCaseUsage",
+        _ => unreachable!("racine de métaclasse non couverte : {stem}"),
+    })
+}
+
 pub fn classify(kw: &str, is_def: bool) -> NodeKind {
     if kw == "package" || kw == "library package" {
         return NodeKind::Package;
@@ -263,5 +388,90 @@ pub fn classify(kw: &str, is_def: bool) -> NodeKind {
         "connect" | "bind" | "binding" | "flow" | "succession" | "transition" | "satisfy"
         | "allocate" | "dependency" => NodeKind::Relationship,
         _ => NodeKind::Usage,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::MEMBER_KWS;
+    use crate::spec;
+
+    /// Aucun nom de métaclasse inventé : tout ce que `metaclass_for` renvoie
+    /// doit exister dans le métamodèle vendu (`spec/metamodel-supertypes.tsv`).
+    #[test]
+    fn every_metaclass_exists() {
+        for kw in MEMBER_KWS {
+            for is_def in [false, true] {
+                if let Some(mc) = metaclass_for(kw, is_def) {
+                    assert!(
+                        !spec::supertypes(mc).is_empty() || mc == "Element",
+                        "`{kw}` (is_def={is_def}) donne `{mc}`, absent du métamodèle"
+                    );
+                }
+            }
+        }
+        for kw in [
+            "use case",
+            "analysis case",
+            "verification case",
+            "assert satisfy",
+        ] {
+            for is_def in [false, true] {
+                if let Some(mc) = metaclass_for(kw, is_def) {
+                    assert!(
+                        !spec::supertypes(mc).is_empty(),
+                        "`{kw}` donne `{mc}`, absent du métamodèle"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Les contextes dont dépendent les règles de portée doivent être reconnus :
+    /// un trou ici rend une règle silencieuse au lieu de fausse.
+    #[test]
+    fn scope_bearing_keywords_are_mapped() {
+        for kw in [
+            "part",
+            "item",
+            "action",
+            "state",
+            "requirement",
+            "concern",
+            "viewpoint",
+            "case",
+            "use case",
+            "analysis",
+            "verification",
+            "constraint",
+            "port",
+            "attribute",
+        ] {
+            for is_def in [false, true] {
+                assert!(
+                    metaclass_for(kw, is_def).is_some(),
+                    "`{kw}` (is_def={is_def}) n'a pas de métaclasse"
+                );
+            }
+        }
+        assert_eq!(
+            metaclass_for("satisfy", false),
+            Some("SatisfyRequirementUsage")
+        );
+        assert_eq!(
+            metaclass_for("assert satisfy", false),
+            Some("SatisfyRequirementUsage")
+        );
+        assert_eq!(metaclass_for("objective", false), Some("RequirementUsage"));
+    }
+
+    /// `doc`, `import`, ... ne portent pas de membres : pas de métaclasse, donc
+    /// pas de diagnostic de portée inventé à leur sujet.
+    #[test]
+    fn non_declarative_keywords_have_no_metaclass() {
+        for kw in ["doc", "import", "alias", "comment", "package"] {
+            assert_eq!(metaclass_for(kw, false), None, "`{kw}`");
+        }
     }
 }

@@ -160,6 +160,16 @@ fn valid_redefinition_member_shorthand_is_clean() {
 }
 
 #[test]
+fn valid_verify_in_verification_objective_is_clean() {
+    assert_ok(&format!("{VALID_DIR}verify_in_verification_objective.sysml"));
+}
+
+#[test]
+fn valid_satisfy_with_subject_and_actor_is_clean() {
+    assert_ok(&format!("{VALID_DIR}satisfy_with_subject_and_actor.sysml"));
+}
+
+#[test]
 fn example_drone_is_clean() {
     assert_ok("examples/drone.sysml");
 }
@@ -401,9 +411,9 @@ fn e235_frame_outside_requirement() {
 }
 
 #[test]
-fn e236_verify_outside_requirement() {
+fn e236_verify_outside_verification_objective() {
     assert_has(
-        &format!("{INVALID_DIR}e236_verify_outside_requirement.sysml"),
+        &format!("{INVALID_DIR}e236_verify_outside_verification_objective.sysml"),
         "E236",
     );
 }

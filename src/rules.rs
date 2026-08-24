@@ -11,6 +11,7 @@ use crate::ast::{NodeKind, QName, RefCtx, RelKind};
 use crate::diag::{Diagnostic, Span};
 use crate::model::Model;
 use crate::parser::is_legacy_kw;
+use crate::spec;
 use crate::stdlib;
 
 /// Catalogue exposé par `--list-rules` : (code, règle, description).
@@ -380,14 +381,59 @@ fn is_end_member(keyword: &str, prefixes: &[String]) -> bool {
 /// métamodèle SysML v2 (même corps `RequirementBody`) : tout ce qui n'est
 /// légal que dans une exigence l'est donc transitivement aussi dans un
 /// `concern` ou un `viewpoint`.
-fn is_requirement_family(pkw: &str) -> bool {
-    pkw.contains("requirement") || pkw.contains("concern") || pkw.contains("viewpoint")
+/// Métaclasse du parent immédiat, pour les règles de portée ci-dessous.
+///
+/// Les règles du validateur de référence sont écrites en `instanceof` sur le
+/// type *propriétaire* de l'appartenance (`SysMLValidator.xtend`), d'où le
+/// passage par `spec::is_any_kind_of` plutôt que par des sous-chaînes de
+/// mots-clés.
+fn owner_metaclass(m: &Model, parent: usize) -> Option<&'static str> {
+    let p = &m.syms[parent];
+    crate::ast::metaclass_for(&p.keyword, p.is_def)
 }
 
-/// `AnalysisCaseDefinition`/`VerificationCaseDefinition`/`UseCaseDefinition`
-/// spécialisent tous `CaseDefinition` : même logique que ci-dessus.
-fn is_case_family(pkw: &str) -> bool {
-    pkw.contains("case") || pkw.contains("analysis") || pkw.contains("verification")
+/// Contextes admis par `validateSubjectMembershipOwningType` et
+/// `validateActorMembershipOwningType` : « Only requirements and cases can
+/// have subjects/actors. »
+const REQUIREMENT_OR_CASE: &[&str] = &[
+    "RequirementDefinition",
+    "RequirementUsage",
+    "CaseDefinition",
+    "CaseUsage",
+];
+
+/// Contextes admis par `validateStakeholderMembershipOwningType` et
+/// `validateRequirementConstraintMembershipOwningType` (dont hérite
+/// `FramedConcernMembership`) : « Only requirements can have ... ».
+const REQUIREMENT_ONLY: &[&str] = &["RequirementDefinition", "RequirementUsage"];
+
+/// Contextes admis par `validateObjectiveMembershipOwningType` :
+/// « Only cases can have objectives. »
+const CASE_ONLY: &[&str] = &["CaseDefinition", "CaseUsage"];
+
+/// Émet `code` si le parent immédiat n'est pas (un sous-type d')`allowed`.
+///
+/// Un parent dont la métaclasse est inconnue est laissé passer : la table de
+/// mots-clés ne couvre que les contextes pertinents, et il vaut mieux taire un
+/// diagnostic que d'en inventer un.
+#[allow(clippy::too_many_arguments)]
+fn check_owner(
+    m: &Model,
+    parent: usize,
+    allowed: &[&str],
+    code: &'static str,
+    rule: &'static str,
+    span: Span,
+    msg: &str,
+    hint: &str,
+    out: &mut Vec<Diagnostic>,
+) {
+    let Some(mc) = owner_metaclass(m, parent) else {
+        return;
+    };
+    if !spec::is_any_kind_of(mc, allowed) {
+        out.push(Diagnostic::error(code, rule, span, msg.to_string()).hint(hint.to_string()));
+    }
 }
 
 fn legacy_hint(kw: &str) -> &'static str {
@@ -516,124 +562,142 @@ fn check_structure(m: &Model, id: usize, _opts: &Options, out: &mut Vec<Diagnost
     }
 
     // E216 — `subject` hors exigence / cas
+    // validateSubjectMembershipOwningType : « Only requirements and cases can
+    // have subjects. » `concern`, `viewpoint` et `satisfy` en héritent.
     if head == "subject" {
-        let ok = is_requirement_family(&pkw) || is_case_family(&pkw);
-        if !ok {
-            out.push(
-                Diagnostic::error(
-                    "E216",
-                    "subject-outside-requirement",
-                    s.span,
-                    "`subject` n'est valide que dans une exigence (`requirement`), un `concern` ou un `case`".to_string(),
-                )
-                .hint("utilise `ref part` si tu voulais simplement référencer un élément".to_string()),
-            );
-        }
+        check_owner(
+            m,
+            parent,
+            REQUIREMENT_OR_CASE,
+            "E216",
+            "subject-outside-requirement",
+            s.span,
+            "`subject` n'est valide que dans une exigence (`requirement`, `concern`, `viewpoint`, `satisfy`) ou un cas (`case`)",
+            "utilise `ref part` si tu voulais simplement référencer un élément",
+            out,
+        );
     }
 
     // E231 — `actor` hors exigence / cas
+    // validateActorMembershipOwningType : « Only requirements and cases can
+    // have actors. » Même ensemble que `subject`.
     if head == "actor" {
-        let ok = is_requirement_family(&pkw) || is_case_family(&pkw);
-        if !ok {
-            out.push(
-                Diagnostic::error(
-                    "E231",
-                    "actor-outside-requirement-or-case",
-                    s.span,
-                    "`actor` n'est valide que dans une exigence (`requirement`) ou un cas (`case`)"
-                        .to_string(),
-                )
-                .hint(
-                    "déplace cet `actor` dans une `requirement def` ou une `case def`".to_string(),
-                ),
-            );
-        }
+        check_owner(
+            m,
+            parent,
+            REQUIREMENT_OR_CASE,
+            "E231",
+            "actor-outside-requirement-or-case",
+            s.span,
+            "`actor` n'est valide que dans une exigence (`requirement`, `concern`, `viewpoint`, `satisfy`) ou un cas (`case`)",
+            "déplace cet `actor` dans une `requirement def` ou une `case def`",
+            out,
+        );
     }
 
-    // E232 — `stakeholder` hors exigence (contrairement à `actor`, pas dans un `case`)
+    // E232 — `stakeholder` hors exigence
+    // validateStakeholderMembershipOwningType : « Only requirements can have
+    // stakeholders. » Contrairement à `actor`, les cas sont exclus.
     if head == "stakeholder" {
-        let ok = is_requirement_family(&pkw);
-        if !ok {
-            out.push(
-                Diagnostic::error(
-                    "E232",
-                    "stakeholder-outside-requirement",
-                    s.span,
-                    "`stakeholder` n'est valide que dans une exigence (`requirement`)".to_string(),
-                )
-                .hint("déplace ce `stakeholder` dans une `requirement def`, ou utilise `actor` si un `case` est concerné".to_string()),
-            );
-        }
+        check_owner(
+            m,
+            parent,
+            REQUIREMENT_ONLY,
+            "E232",
+            "stakeholder-outside-requirement",
+            s.span,
+            "`stakeholder` n'est valide que dans une exigence (`requirement`, `concern`, `viewpoint`)",
+            "déplace ce `stakeholder` dans une `requirement def`, ou utilise `actor` si un `case` est concerné",
+            out,
+        );
     }
 
     // E233 — `require` / `assume` hors exigence
+    // validateRequirementConstraintMembershipOwningType : « Only requirements
+    // can have assumed or required constraints. »
     if head == "require" || head == "assume" {
-        let ok = is_requirement_family(&pkw);
-        if !ok {
-            out.push(
-                Diagnostic::error(
-                    "E233",
-                    "require-assume-outside-requirement",
-                    s.span,
-                    format!("`{head}` n'est valide que dans une exigence (`requirement`)"),
-                )
-                .hint("déplace cette contrainte dans une `requirement def`".to_string()),
-            );
-        }
+        check_owner(
+            m,
+            parent,
+            REQUIREMENT_ONLY,
+            "E233",
+            "require-assume-outside-requirement",
+            s.span,
+            &format!("`{head}` n'est valide que dans une exigence (`requirement`, `concern`, `viewpoint`)"),
+            "déplace cette contrainte dans une `requirement def`",
+            out,
+        );
     }
 
-    // E234 — `objective` hors cas (contrairement à `require`/`assume`, pas dans une exigence)
+    // E234 — `objective` hors cas
+    // validateObjectiveMembershipOwningType : « Only cases can have
+    // objectives. » `use case`, `analysis` et `verification` en héritent.
     if head == "objective" {
-        let ok = is_case_family(&pkw);
-        if !ok {
-            out.push(
-                Diagnostic::error(
-                    "E234",
-                    "objective-outside-case",
-                    s.span,
-                    "`objective` n'est valide que dans un cas (`case`)".to_string(),
-                )
-                .hint("déplace cet `objective` dans une `case def` (ou `analysis def` / `verification def` / `use case def`)".to_string()),
-            );
-        }
+        check_owner(
+            m,
+            parent,
+            CASE_ONLY,
+            "E234",
+            "objective-outside-case",
+            s.span,
+            "`objective` n'est valide que dans un cas (`case`)",
+            "déplace cet `objective` dans une `case def` (ou `analysis def` / `verification def` / `use case def`)",
+            out,
+        );
     }
 
-    // E235 — `frame` hors exigence (`FramedConcernMember` n'est atteignable
-    // que depuis le corps d'une exigence dans la grammaire réelle)
+    // E235 — `frame` hors exigence
+    // `FramedConcernMembership` spécialise `RequirementConstraintMembership` :
+    // il hérite donc de validateRequirementConstraintMembershipOwningType.
     if head == "frame" {
-        let ok = is_requirement_family(&pkw);
-        if !ok {
-            out.push(
-                Diagnostic::error(
-                    "E235",
-                    "frame-outside-requirement",
-                    s.span,
-                    "`frame` n'est valide que dans une exigence (`requirement`)".to_string(),
-                )
-                .hint(
-                    "déplace ce `frame` dans une `requirement def` (ou un `concern`/`viewpoint`)"
-                        .to_string(),
-                ),
-            );
-        }
+        check_owner(
+            m,
+            parent,
+            REQUIREMENT_ONLY,
+            "E235",
+            "frame-outside-requirement",
+            s.span,
+            "`frame` n'est valide que dans une exigence (`requirement`, `concern`, `viewpoint`)",
+            "déplace ce `frame` dans une `requirement def` (ou un `concern`/`viewpoint`)",
+            out,
+        );
     }
 
-    // E236 — `verify` hors exigence (forme approchée : la grammaire réelle
-    // restreint plus finement `verify` à l'`objective` d'un cas de
-    // vérification, mais ce rapprochement suit la même granularité que les
-    // autres règles de portée ci-dessus, qui ne vérifient que le parent
-    // immédiat)
+    // E236 — `verify` hors de l'objectif d'un cas de vérification
+    //
+    // La règle de référence n'est pas une simple contrainte sur le parent
+    // immédiat (`UsageUtil.isLegalVerification`) :
+    //
+    //     owningType instanceof RequirementUsage && isObjective(owningType)
+    //     && owningType.owningType instanceof VerificationCase{Definition,Usage}
+    //
+    // soit, en notation textuelle, `verify` doit se trouver dans le corps d'un
+    // `objective` lui-même porté par un `verification def` / `verification`.
+    // C'est le seul contrôle de portée du lot qui regarde le grand-parent.
     if head == "verify" {
-        let ok = is_requirement_family(&pkw);
+        let in_objective = head_kw(&m.syms[parent].keyword) == "objective";
+        let ok = in_objective
+            && m.syms[parent]
+                .parent
+                .and_then(|gp| owner_metaclass(m, gp))
+                .map(|mc| {
+                    spec::is_kind_of(mc, "VerificationCaseDefinition")
+                        || spec::is_kind_of(mc, "VerificationCaseUsage")
+                })
+                .unwrap_or(false);
         if !ok {
             out.push(
                 Diagnostic::error(
                     "E236",
-                    "verify-outside-requirement",
+                    "verify-outside-verification-objective",
                     s.span,
-                    "`verify` n'est valide que dans une exigence (`requirement`)".to_string(),
+                    "`verify` n'est valide que dans l'`objective` d'un cas de vérification"
+                        .to_string(),
                 )
-                .hint("déplace ce `verify` dans une `requirement def`".to_string()),
+                .hint(
+                    "encadre-le ainsi : `verification def V { objective { verify MonExigence; } }`"
+                        .to_string(),
+                ),
             );
         }
     }
@@ -1612,15 +1676,62 @@ mod tests {
     }
 
     #[test]
-    fn e236_verify_outside_requirement() {
+    fn e236_verify_outside_any_case() {
         let d = analyze("package P { requirement def R; part def Robot { verify R; } }");
         assert!(has(&d, "E236"), "{d:?}");
     }
 
     #[test]
-    fn e236_verify_allowed_inside_requirement() {
-        let d = analyze("package P { requirement def Q; requirement def R { verify Q; } }");
+    fn e236_verify_inside_a_plain_requirement_is_not_enough() {
+        // `UsageUtil.isLegalVerification` exige l'`objective` d'un cas de
+        // vérification : une exigence ordinaire ne suffit pas, alors même que
+        // la grammaire (`RequirementBodyItem`) accepte `verify` ici.
+        let d = analyze("package P { requirement def R; requirement def Q { verify R; } }");
+        assert!(has(&d, "E236"), "{d:?}");
+    }
+
+    #[test]
+    fn e236_verify_inside_a_non_verification_objective_is_not_enough() {
+        let d =
+            analyze("package P { requirement def R; use case def U { objective { verify R; } } }");
+        assert!(has(&d, "E236"), "{d:?}");
+    }
+
+    #[test]
+    fn e236_verify_allowed_in_a_verification_case_objective() {
+        let d = analyze(
+            "package P { requirement def R; verification def V { objective { verify R; } } }",
+        );
         assert!(!has(&d, "E236"), "{d:?}");
+    }
+
+    #[test]
+    fn e236_verify_allowed_in_a_verification_usage_objective() {
+        let d = analyze(
+            "package P { requirement def R; verification def V; \
+             verification v : V { objective { verify R; } } }",
+        );
+        assert!(!has(&d, "E236"), "{d:?}");
+    }
+
+    #[test]
+    fn verify_target_is_resolved_not_declared() {
+        // `verify X` référence une exigence : une cible inexistante doit être
+        // signalée, et ne doit surtout pas déclarer un élément nommé `X`.
+        let d = analyze(
+            "package P { requirement def R; verification def V { objective { verify Absente; } } }",
+        );
+        assert!(has(&d, "E200"), "{d:?}");
+    }
+
+    #[test]
+    fn verify_target_can_be_qualified_or_chained() {
+        let d = analyze(
+            "package P { use case U { objective obj; } \
+             verification def V { objective { verify U.obj; } } }",
+        );
+        assert!(!has(&d, "E100"), "{d:?}");
+        assert!(!has(&d, "E200"), "{d:?}");
     }
 
     #[test]
