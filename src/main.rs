@@ -623,11 +623,12 @@ fn print_rules() {
     println!("[");
     let n = rules::CATALOG.len();
     for (i, entry) in rules::CATALOG.iter().enumerate() {
-        let (code, rule, desc) = *entry;
+        let (code, rule, authority, desc) = *entry;
         print!(
-            "  {{\"code\": {}, \"rule\": {}, \"description\": {}}}",
+            "  {{\"code\": {}, \"rule\": {}, \"authority\": {}, \"description\": {}}}",
             json::qs(code),
             json::qs(rule),
+            json::qs(authority.as_str()),
             json::qs(desc)
         );
         if i + 1 < n {

@@ -698,6 +698,28 @@ fn cli_list_rules_lists_every_catalog_entry() {
     assert_eq!(out.status.code(), Some(0));
 }
 
+/// Chaque règle déclare d'où elle tire son autorité — c'est ce qui distingue
+/// une exigence de la spécification d'une convention maison.
+#[test]
+fn cli_list_rules_declares_an_authority_per_rule() {
+    let out = run(&["--list-rules"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let codes = stdout.matches("\"code\":").count();
+    let authorities = stdout.matches("\"authority\":").count();
+    assert_eq!(codes, authorities, "sortie :\n{stdout}");
+    for value in ["\"spec\"", "\"grammar\"", "\"style\""] {
+        assert!(
+            stdout.contains(value),
+            "autorité `{value}` absente :\n{stdout}"
+        );
+    }
+    // Les règles adossées au validateur de référence.
+    assert!(stdout.contains("\"verify-outside-verification-objective\""));
+    assert!(!stdout.contains("\"verify-outside-requirement\""));
+}
+
+/// Un nom retiré de la bibliothèque standard est une erreur pour la version
+/// courante, et seulement un avertissement pour la version qui le définissait.
 #[test]
 fn cli_help_flag_exits_zero() {
     let out = run(&["--help"]);

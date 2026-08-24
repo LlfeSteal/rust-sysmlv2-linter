@@ -14,49 +14,78 @@ use crate::parser::is_legacy_kw;
 use crate::spec;
 use crate::stdlib;
 
-/// Catalogue exposé par `--list-rules` : (code, règle, description).
-pub const CATALOG: &[(&str, &str, &str)] = &[
-    ("E001", "unterminated-block-comment", "Commentaire `/* ... */` non fermé."),
-    ("E002", "unterminated-string", "Chaîne ou nom entre apostrophes non terminé."),
-    ("E003", "unexpected-character", "Caractère hors grammaire (souvent un stéréotype UML `«...»`)."),
-    ("E100", "member-must-start-with-keyword", "Un membre doit commencer par un mot-clé SysML v2."),
-    ("E100", "unexpected-token", "Jeton inattendu dans une déclaration."),
-    ("E101", "expected-token", "Jeton attendu absent."),
-    ("E102", "unclosed-brace", "Accolade, crochet ou multiplicité non fermé."),
-    ("E103", "missing-semicolon", "Déclaration non terminée par `;` ni par un corps `{ }`."),
-    ("E104", "doc-without-body", "`doc`, `comment` ou `rep` sans corps `/* ... */`."),
-    ("E105", "nesting-too-deep", "Imbrication supérieure à 64 niveaux."),
-    ("E200", "unresolved-name", "Nom référencé introuvable dans le modèle ni dans la bibliothèque."),
-    ("E201", "duplicate-name", "Deux éléments portent le même nom dans une même portée."),
-    ("E210", "def-typed-by-colon", "Une définition utilise `:` au lieu de `:>` (spécialisation)."),
-    ("E212", "multiplicity-on-definition", "Multiplicité placée sur une définition au lieu d'un usage."),
-    ("E213", "legacy-keyword", "Mot-clé SysML v1 / UML (`block`, `value`, `association`, ...)."),
-    ("E214", "redefines-target-not-inherited", "`redefines` vise un élément absent des supertypes."),
-    ("E215", "end-outside-connection", "`end` hors d'une `connection def` / `interface def`."),
-    ("E216", "subject-outside-requirement", "`subject` hors d'une exigence, d'un `concern` ou d'un `case`."),
-    ("E218", "invalid-multiplicity-range", "Bornes de multiplicité incohérentes ou vides."),
-    ("E222", "variant-outside-variation", "`variant` hors d'un élément `variation`."),
-    ("E225", "reserved-word-as-name", "Mot réservé utilisé comme nom sans échappement `'...'`."),
-    ("E227", "package-inside-definition", "`package` déclaré dans une définition ou un usage."),
-    ("E230", "satisfy-target-not-requirement", "`satisfy` vise un élément qui n'est pas une exigence."),
-    ("E231", "actor-outside-requirement-or-case", "`actor` hors d'une exigence ou d'un cas."),
-    ("E232", "stakeholder-outside-requirement", "`stakeholder` hors d'une exigence."),
-    ("E233", "require-assume-outside-requirement", "`require` ou `assume` hors d'une exigence."),
-    ("E234", "objective-outside-case", "`objective` hors d'un cas."),
-    ("E235", "frame-outside-requirement", "`frame` hors d'une exigence."),
-    ("E236", "verify-outside-requirement", "`verify` hors d'une exigence."),
-    ("W200", "unresolved-name", "Nom non résolu dans un contexte tolérant (expression, import opaque)."),
-    ("W301", "unimported-standard-type", "Type de la bibliothèque standard utilisé sans import."),
-    ("W302", "empty-package", "Paquet déclaré avec un corps vide (--pedantic)."),
-    ("W306", "naming-convention", "UpperCamelCase attendu pour les définitions, lowerCamelCase pour les usages (--pedantic)."),
-    ("W307", "requirement-without-subject", "`requirement def` sans `subject` (--pedantic)."),
-    ("W309", "untyped-usage", "Usage déclaré sans type (--pedantic)."),
-    ("W310", "connection-without-ends", "`connection def` sans extrémité `end`."),
-    ("W311", "non-standard-keyword", "Mot-clé absent de la grammaire SysML v2 (`readonly`, `composite`, `portion` employés seuls) (--pedantic)."),
-    ("W312", "kerml-only-keyword", "Mot-clé KerML absent de la surface SysML v2 (`feature`, `namespace`, `specialization`, `subclassification`) (--pedantic)."),
-    ("W313", "public-import-at-top-level", "`import` sans paquet englobant marqué `public`/`protected` au lieu de `private` (--pedantic)."),
-];
+/// D'où une règle tire son autorité.
+///
+/// La distinction est le cœur de la conformité : un `Spec` est opposable — on
+/// peut pointer la métaclasse ou la règle du validateur de référence dont il
+/// découle —, un `Style` ne l'est pas.
+///
+/// Axe indépendant de `--pedantic`, qui ne filtre que les règles *bruyantes* :
+/// quelques `Style` peu bavards (E105, E218, W310) restent actifs par défaut.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Authority {
+    /// Syntaxe abstraite ou règle de bonne formation : `SysML.json`,
+    /// `SysMLValidator.xtend`, `UsageUtil.java`.
+    Spec,
+    /// Notation textuelle : `SysML.xtext` / `KerML.xtext`. Le métamodèle ne
+    /// décrit pas la forme concrète, ces règles n'en découlent donc pas.
+    Grammar,
+    /// Convention maison, sans base normative.
+    Style,
+}
 
+impl Authority {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Authority::Spec => "spec",
+            Authority::Grammar => "grammar",
+            Authority::Style => "style",
+        }
+    }
+}
+
+/// Catalogue exposé par `--list-rules` : (code, règle, autorité, description).
+pub const CATALOG: &[(&str, &str, Authority, &str)] = &[
+    ("E001", "unterminated-block-comment", Authority::Grammar, "Commentaire `/* ... */` non fermé."),
+    ("E002", "unterminated-string", Authority::Grammar, "Chaîne ou nom entre apostrophes non terminé."),
+    ("E003", "unexpected-character", Authority::Grammar, "Caractère hors grammaire (souvent un stéréotype UML `«...»`)."),
+    ("E100", "member-must-start-with-keyword", Authority::Grammar, "Un membre doit commencer par un mot-clé SysML v2 (ou par sa partie de spécialisation : `:>> x = ...;`)."),
+    ("E100", "unexpected-token", Authority::Grammar, "Jeton inattendu dans une déclaration."),
+    ("E101", "expected-token", Authority::Grammar, "Jeton attendu absent."),
+    ("E102", "unclosed-brace", Authority::Grammar, "Accolade, crochet ou multiplicité non fermé."),
+    ("E103", "missing-semicolon", Authority::Grammar, "Déclaration non terminée par `;` ni par un corps `{ }`."),
+    ("E104", "doc-without-body", Authority::Grammar, "`doc`, `comment` ou `rep` sans corps `/* ... */`."),
+    ("E105", "nesting-too-deep", Authority::Style, "Imbrication supérieure à 64 niveaux."),
+    ("E200", "unresolved-name", Authority::Spec, "Nom référencé introuvable dans le modèle ni dans la bibliothèque."),
+    ("E201", "duplicate-name", Authority::Spec, "Deux éléments portent le même nom dans une même portée."),
+    ("E210", "def-typed-by-colon", Authority::Grammar, "Une définition utilise `:` au lieu de `:>` (spécialisation)."),
+    ("E212", "multiplicity-on-definition", Authority::Grammar, "Multiplicité placée sur une définition au lieu d'un usage."),
+    ("E213", "legacy-keyword", Authority::Grammar, "Mot-clé SysML v1 / UML (`block`, `value`, `association`, ...)."),
+    ("E214", "redefines-target-not-inherited", Authority::Spec, "`redefines` vise un élément absent des supertypes."),
+    ("E215", "end-outside-connection", Authority::Grammar, "`end` hors d'une `connection def` / `interface def`."),
+    ("E216", "subject-outside-requirement", Authority::Spec, "`subject` hors d'une exigence ou d'un `case` (validateSubjectMembershipOwningType)."),
+    ("E218", "invalid-multiplicity-range", Authority::Style, "Bornes de multiplicité incohérentes ou vides (le validateur de référence ne le signale pas)."),
+    ("E222", "variant-outside-variation", Authority::Spec, "`variant` hors d'un élément `variation`."),
+    ("E225", "reserved-word-as-name", Authority::Grammar, "Mot réservé utilisé comme nom sans échappement `'...'`."),
+    ("E227", "package-inside-definition", Authority::Grammar, "`package` déclaré dans une définition ou un usage."),
+    ("E230", "satisfy-target-not-requirement", Authority::Spec, "`satisfy` vise un élément qui n'est pas une exigence."),
+    ("E231", "actor-outside-requirement-or-case", Authority::Spec, "`actor` hors d'une exigence ou d'un `case` (validateActorMembershipOwningType)."),
+    ("E232", "stakeholder-outside-requirement", Authority::Spec, "`stakeholder` hors d'une exigence (validateStakeholderMembershipOwningType)."),
+    ("E233", "require-assume-outside-requirement", Authority::Spec, "`require` ou `assume` hors d'une exigence (validateRequirementConstraintMembershipOwningType)."),
+    ("E234", "objective-outside-case", Authority::Spec, "`objective` hors d'un `case` (validateObjectiveMembershipOwningType)."),
+    ("E235", "frame-outside-requirement", Authority::Spec, "`frame` hors d'une exigence (FramedConcernMembership hérite de RequirementConstraintMembership)."),
+    ("E236", "verify-outside-verification-objective", Authority::Spec, "`verify` hors de l'`objective` d'un cas de vérification (UsageUtil.isLegalVerification)."),
+    ("W200", "unresolved-name", Authority::Spec, "Nom non résolu dans un contexte tolérant (expression, import opaque)."),
+    ("W301", "unimported-standard-type", Authority::Spec, "Type de la bibliothèque standard utilisé sans import."),
+    ("W302", "empty-package", Authority::Style, "Paquet déclaré avec un corps vide (--pedantic)."),
+    ("W306", "naming-convention", Authority::Style, "UpperCamelCase attendu pour les définitions, lowerCamelCase pour les usages (--pedantic)."),
+    ("W307", "requirement-without-subject", Authority::Style, "`requirement def` sans `subject` (--pedantic)."),
+    ("W309", "untyped-usage", Authority::Style, "Usage déclaré sans type (--pedantic)."),
+    ("W310", "connection-without-ends", Authority::Style, "`connection def` sans extrémité `end`."),
+    ("W311", "non-standard-keyword", Authority::Style, "Mot-clé absent de la grammaire SysML v2 (`readonly`, `composite`, `portion` employés seuls) (--pedantic)."),
+    ("W312", "kerml-only-keyword", Authority::Style, "Mot-clé KerML absent de la surface SysML v2 (`feature`, `namespace`, `specialization`, `subclassification`) (--pedantic)."),
+    ("W313", "public-import-at-top-level", Authority::Style, "`import` sans paquet englobant marqué `public`/`protected` au lieu de `private` (--pedantic)."),
+];
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum UnresolvedMode {
     Error,
