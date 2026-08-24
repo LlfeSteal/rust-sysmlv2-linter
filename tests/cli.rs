@@ -155,6 +155,11 @@ fn valid_coverage_audit_low_fixes_is_clean() {
 }
 
 #[test]
+fn valid_redefinition_member_shorthand_is_clean() {
+    assert_ok(&format!("{VALID_DIR}redefinition_member_shorthand.sysml"));
+}
+
+#[test]
 fn example_drone_is_clean() {
     assert_ok("examples/drone.sysml");
 }

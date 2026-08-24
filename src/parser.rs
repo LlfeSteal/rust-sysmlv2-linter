@@ -278,6 +278,29 @@ pub fn is_legacy_kw(s: &str) -> bool {
     LEGACY_KWS.contains(&s)
 }
 
+/// Formes de spécialisation qui peuvent *ouvrir* un membre, sans mot-clé
+/// devant : `:>> path = "x";`, `:> Base;`, `redefines path;`, ...
+///
+/// La notation textuelle autorise une `FeatureUsage` anonyme dont toute la
+/// déclaration se réduit à sa `FeatureSpecializationPart` ; c'est la forme
+/// courante pour affecter une valeur à une caractéristique héritée, en
+/// particulier dans le corps d'une métadonnée (`@Meta { :>> path = "..."; }`).
+/// Le `:` seul est volontairement exclu : `: Type;` en tête de membre est
+/// bien plus probablement un mot-clé oublié qu'une déclaration anonyme, et le
+/// diagnostic E100 reste alors plus utile.
+fn starts_bare_specialization(tok: &Token) -> bool {
+    if tok.kind == TokKind::Punct {
+        return matches!(tok.text.as_str(), ":>>" | "::>" | ":>");
+    }
+    if tok.kind == TokKind::Ident && !tok.quoted {
+        return matches!(
+            tok.text.as_str(),
+            "specializes" | "subsets" | "redefines" | "references"
+        );
+    }
+    false
+}
+
 /// Mot réservé *réel* de SysML v2 : ne peut pas servir de nom sans échappement.
 /// On exclut les mots hérités de SysML v1 (`block`, `value`, ...) qui ne sont
 /// reconnus que pour produire un diagnostic dédié.
@@ -523,6 +546,9 @@ impl Parser {
         if t.kind == TokKind::Ident && !t.quoted && is_member_kw(&t.text) {
             return true;
         }
+        if starts_bare_specialization(t) {
+            return true;
+        }
         // `not satisfy ...` : `not` lui-même n'est pas un mot-clé de membre,
         // seul ce qui le suit l'est (voir la même vérification dans
         // `parse_member`).
@@ -677,6 +703,19 @@ impl Parser {
                 let t = self.bump();
                 node.prefixes.push(Spanned::new(t.text.clone(), t.span));
             }
+        }
+
+        // `FeatureUsage` anonyme : le membre commence directement par sa partie
+        // de spécialisation (`:>> path = "x";`, `:> Base;`, `redefines x;`).
+        // Aucun mot-clé n'est présent — on laisse `parse_decl` faire le reste,
+        // il sait déjà lire un nom absent puis une suite de relations.
+        if starts_bare_specialization(self.cur()) {
+            node.keyword_span = self.cur().span;
+            node.kind = classify("", false);
+            self.parse_decl(&mut node, false);
+            self.finish_member(&mut node, depth);
+            node.span = Span::join(start, self.prev_span());
+            return Some(node);
         }
 
         // Mot-clé
