@@ -758,6 +758,7 @@ fn ctx_label(ctx: RefCtx) -> &'static str {
         RefCtx::TransitionTarget => "état cible de transition",
         RefCtx::SatisfyTarget => "exigence satisfaite",
         RefCtx::SatisfyBy => "élément satisfaisant l'exigence",
+        RefCtx::VerifyTarget => "élément vérifié",
         RefCtx::AllocateSource => "source d'allocation",
         RefCtx::AllocateTarget => "cible d'allocation",
         RefCtx::About => "cible de commentaire",
@@ -1527,13 +1528,13 @@ mod tests {
 
     #[test]
     fn e236_verify_outside_requirement() {
-        let d = analyze("package P { part def Robot { verify; } }");
+        let d = analyze("package P { requirement def R; part def Robot { verify R; } }");
         assert!(has(&d, "E236"), "{d:?}");
     }
 
     #[test]
     fn e236_verify_allowed_inside_requirement() {
-        let d = analyze("package P { requirement def R { verify; } }");
+        let d = analyze("package P { requirement def Q; requirement def R { verify Q; } }");
         assert!(!has(&d, "E236"), "{d:?}");
     }
 

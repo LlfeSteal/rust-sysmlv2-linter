@@ -817,6 +817,15 @@ impl Parser {
         node.kind = classify(&kw, is_def);
 
         match kw.as_str() {
+            // `verify X;` : X *référence* une exigence existante, ce n'est pas
+            // la déclaration d'un nouvel élément nommé X. Le métamodèle est
+            // explicite — `VerificationCase*::verifiedRequirement` pointe vers
+            // une `RequirementUsage` — et la cible peut donc être qualifiée
+            // (`Pkg::Req`) ou chaînée (`UseCase.objectif`), ce que
+            // `parse_decl` ne sait pas lire. La forme enveloppée
+            // (`verify requirement r : R { ... }`) a déjà été absorbée plus
+            // haut par `is_wrapper_kw` et ne passe pas ici.
+            "verify" => self.parse_verify_tail(&mut node, depth),
             "import" => self.parse_import_tail(&mut node),
             "alias" => self.parse_alias_tail(&mut node),
             "doc" => self.parse_doc_tail(&mut node),
@@ -1196,6 +1205,26 @@ impl Parser {
     }
 
     // ---- relations -------------------------------------------------------
+
+    fn parse_verify_tail(&mut self, node: &mut Node, depth: u32) {
+        loop {
+            match self.parse_qname(false) {
+                Some(q) => node.refs.push(RefUse {
+                    qname: q,
+                    ctx: RefCtx::VerifyTarget,
+                }),
+                None => {
+                    self.err_expected("une exigence à vérifier", "verify");
+                    break;
+                }
+            }
+            if self.eat_punct(",") {
+                continue;
+            }
+            break;
+        }
+        self.finish_member(node, depth);
+    }
 
     fn parse_relationship_tail(&mut self, node: &mut Node, depth: u32) {
         let head = node.keyword.split(' ').next().unwrap_or("").to_string();
