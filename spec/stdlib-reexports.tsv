@@ -1,0 +1,33 @@
+# paquet	paquet ré-exporté (`public import X::*;`).
+# Généré par tools/gen-stdlib.py --fetch ; ne pas éditer à la main.
+BooleanFunctions	ScalarValues
+CauseAndEffect	CausationConnections
+CollectionFunctions	Collections
+ComplexFunctions	ScalarValues
+ISQ	ISQAcoustics
+ISQ	ISQAtomicNuclear
+ISQ	ISQBase
+ISQ	ISQCharacteristicNumbers
+ISQ	ISQChemistryMolecular
+ISQ	ISQCondensedMatter
+ISQ	ISQElectromagnetism
+ISQ	ISQInformation
+ISQ	ISQLight
+ISQ	ISQMechanics
+ISQ	ISQSpaceTime
+ISQ	ISQThermodynamics
+IntegerFunctions	ScalarValues
+NaturalFunctions	ScalarValues
+NumericalFunctions	ScalarValues
+RationalFunctions	ScalarValues
+RealFunctions	ScalarValues
+RequirementDerivation	DerivationConnections
+SI	ISQ
+SI	SIPrefixes
+ScalarFunctions	ScalarValues
+StandardViewDefinitions	SysML
+StringFunctions	ScalarValues
+Triggers	Clocks
+Triggers	Observation
+USCustomaryUnits	ISQ
+VectorFunctions	VectorValues

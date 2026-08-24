@@ -281,6 +281,34 @@ struct Ctx {
     opaque_wildcard: bool,
 }
 
+impl Ctx {
+    /// Liste des paquets standard importés, si `name` n'appartient à aucun
+    /// paquet de la bibliothèque **et** qu'aucun import opaque ne pourrait
+    /// l'apporter. `None` dès qu'on ne peut rien affirmer.
+    fn known_library_imports(&self, name: &str) -> Option<String> {
+        if self.opaque_wildcard || stdlib::is_library_leaf(name) {
+            return None;
+        }
+        let mut pkgs: Vec<&str> = self
+            .imported_roots
+            .iter()
+            .filter(|r| stdlib::is_library_root(r))
+            .map(|r| r.as_str())
+            .collect();
+        if pkgs.is_empty() {
+            return None;
+        }
+        pkgs.sort_unstable();
+        Some(match pkgs.split_last() {
+            Some((last, [])) => format!("`{last}` ne le définit pas"),
+            Some((last, rest)) => {
+                format!("ni `{}` ni `{last}` ne le définissent", rest.join("`, `"))
+            }
+            None => unreachable!(),
+        })
+    }
+}
+
 fn build_ctx(m: &Model) -> Ctx {
     let mut imported_roots = HashSet::new();
     let mut opaque_wildcard = false;
@@ -811,6 +839,42 @@ fn nearest_name(m: &Model, scope: usize, target: &str) -> Option<String> {
     best.map(|(_, n)| n)
 }
 
+/// Nom de la bibliothèque standard proche de `target`, avec son paquet.
+///
+/// Complète `nearest_name`, qui ne regarde que le modèle analysé : attrape les
+/// fautes de frappe sur un type standard (`Strng` → `ScalarValues::String`).
+/// Volontairement limité à la proximité orthographique — un nom composé comme
+/// `FlowConnection` est trop loin de `Flow` pour être deviné ainsi, et c'est le
+/// diagnostic « aucun paquet importé ne le fournit » qui le prend en charge.
+fn nearest_library_name(target: &str) -> Option<(&'static str, &'static str)> {
+    let lower = target.to_lowercase();
+    // Même tolérance que `nearest_name` : au-delà, on suggère du bruit
+    // (`Shared` → `Sphere`) plutôt qu'une faute de frappe.
+    let limit = if target.chars().count() <= 4 { 1 } else { 2 };
+    let mut best: Option<(usize, &'static str, &'static str)> = None;
+    for name in stdlib::all_names() {
+        if *name == target {
+            continue;
+        }
+        // Le calcul est borné aux noms de longueur voisine : inutile de
+        // comparer `Flow` à `AccelerationValue`.
+        let (a, b) = (name.chars().count(), target.chars().count());
+        if a.abs_diff(b) > limit {
+            continue;
+        }
+        let d = edit_distance(&name.to_lowercase(), &lower);
+        let better = match &best {
+            Some((bd, _, _)) => d < *bd,
+            None => true,
+        };
+        if d <= limit && better {
+            let pkg = stdlib::suggest_import_for(name)?;
+            best = Some((d, name, pkg));
+        }
+    }
+    best.map(|(_, n, p)| (n, p))
+}
+
 fn edit_distance(a: &str, b: &str) -> usize {
     let av: Vec<char> = a.chars().collect();
     let bv: Vec<char> = b.chars().collect();
@@ -912,7 +976,13 @@ fn report_resolution(
         Res::LibraryLeaf => {
             let name = q.root().to_string();
             if let Some(pkg) = stdlib::suggest_import_for(&name) {
-                if !ctx.imported_roots.contains(pkg) {
+                // Un nom peut être visible depuis plusieurs paquets : celui qui
+                // le définit et tous ceux qui le ré-exportent. `MassValue` vient
+                // d'`ISQBase`, mais `import ISQ::*;` suffit à l'atteindre — il
+                // ne faut donc pas réclamer un import de plus.
+                let exposing = stdlib::exposing_packages(&name);
+                if !exposing.iter().any(|p| ctx.imported_roots.contains(*p)) {
+
                     out.push(
                         Diagnostic::warn(
                             "W301",
@@ -971,6 +1041,15 @@ fn report_resolution(
 
             if let Some(sugg) = nearest_name(m, scope, &bad) {
                 d = d.hint(format!("vouliez-vous dire `{sugg}` ?"));
+            } else if let Some((sugg, pkg)) = nearest_library_name(&bad) {
+                d = d.hint(format!(
+                    "`{bad}` n'existe pas dans la bibliothèque standard ; vouliez-vous dire `{pkg}::{sugg}` ?"
+                ));
+            } else if let Some(pkgs) = ctx.known_library_imports(&bad) {
+                // Tous les imports du fichier sont des paquets standard dont on
+                // connaît le contenu exact : on peut affirmer que le nom n'y est
+                // pas, plutôt que de supposer un paquet non fourni.
+                d = d.hint(format!("`{bad}` n'appartient à aucun paquet standard ; {pkgs}"));
             } else if ctx.opaque_wildcard {
                 d = d.hint(
                     "aucune déclaration correspondante dans les fichiers analysés ; \
@@ -1716,6 +1795,36 @@ mod tests {
     fn w301_standard_library_type_used_without_import() {
         let d = analyze("package P { part def Robot { attribute masse : MassValue; } }");
         assert!(has(&d, "W301"));
+    }
+
+    #[test]
+    fn unresolved_name_suggests_the_standard_library_spelling() {
+        let d = analyze(
+            "package P { private import ScalarValues::*; part def A { attribute s : Strng; } }",
+        );
+        let hint = d
+            .iter()
+            .find(|x| x.code == "E200")
+            .and_then(|x| x.hint.clone())
+            .unwrap_or_default();
+        assert!(hint.contains("ScalarValues::String"), "{hint}");
+    }
+
+    #[test]
+    fn unresolved_name_states_that_known_imports_do_not_provide_it() {
+        // `FlowConnection` n'existe nulle part dans la bibliothèque : le type
+        // de flux standard est `Flows::Flow`. Comme tous les imports sont des
+        // paquets standard au contenu connu, on peut l'affirmer.
+        let d = analyze(
+            "package P { private import Connections::*; part def A { attribute f : FlowConnection; } }",
+        );
+        let hint = d
+            .iter()
+            .find(|x| x.code == "E200")
+            .and_then(|x| x.hint.clone())
+            .unwrap_or_default();
+        assert!(hint.contains("Connections"), "{hint}");
+        assert!(hint.contains("aucun paquet standard"), "{hint}");
     }
 
     #[test]
