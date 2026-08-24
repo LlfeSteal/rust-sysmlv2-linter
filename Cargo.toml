@@ -10,6 +10,14 @@ readme = "README.md"
 keywords = ["sysml", "kerml", "linter", "mbse", "parser"]
 categories = ["command-line-utilities", "development-tools"]
 
+# Outillage de génération : `tools/` produit `src/spec.rs` et `src/stdlib.rs`
+# à partir des index vendus dans `spec/`. Indispensable au dépôt (provenance,
+# régénération, contrôle de dérive en CI), inutile au paquet publié — seules
+# les tables statiques déjà générées comptent pour compiler.
+# Barre oblique initiale volontaire : ces motifs sont de style gitignore, et un
+# `spec` non ancré ne désignerait pas forcément le seul répertoire racine.
+exclude = ["/tools", "/spec"]
+
 [[bin]]
 name = "sysml-check"
 path = "src/main.rs"

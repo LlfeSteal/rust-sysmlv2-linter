@@ -19,7 +19,7 @@ mod stdlib;
 use std::io::Read;
 use std::io::Write;
 
-use crate::ast::{NodeKind, QName, RefUse, Rel};
+use crate::ast::{QName, RefUse, Rel};
 use crate::diag::{Diagnostic, Severity};
 use crate::model::Model;
 use crate::rules::{LibraryVersion, Options, UnresolvedMode};
@@ -660,5 +660,3 @@ fn print_rules() {
     }
     println!("]");
 }
-
-fn _unused(_: NodeKind) {}
