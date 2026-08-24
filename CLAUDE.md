@@ -24,10 +24,48 @@ rules.rs   → semantic checks over the Model, driven by Options
 diag.rs    → Diagnostic/Span types, human-readable rendering
 json.rs    → JSON output
 main.rs    → CLI arg parsing, orchestration, exit codes
-stdlib.rs  → known standard-library package/type names (ISQ, ScalarValues,
-             ...) used to distinguish "unresolved because unknown" (E200)
-             from "unresolved because unimported" (W301)
+stdlib.rs  → **generated** — every standard-library package and element name,
+             with the package that defines it and those that re-export it.
+             Distinguishes "unresolved because unknown" (E200) from
+             "unresolved because unimported" (W301)
+spec.rs    → **generated** — the SysML v2 metaclass hierarchy, used to
+             reproduce the reference validator's `instanceof` scope rules
 ```
+
+### Generated files — do not edit `src/spec.rs` or `src/stdlib.rs`
+
+Both are produced by scripts in `tools/` from small vendored indexes in
+`spec/`, and CI (the `generated` job) fails if they drift:
+
+```bash
+python3 tools/gen-spec-table.py          # spec/metamodel-supertypes.tsv -> src/spec.rs
+python3 tools/gen-stdlib.py              # spec/stdlib-*.{tsv,txt}       -> src/stdlib.rs
+python3 tools/gen-spec-table.py --check  # what CI runs
+python3 tools/gen-spec-table.py --fetch  # refresh the vendored index (needs network)
+```
+
+Only `--fetch` touches the network (OMG for the metamodel, GitHub for the
+library); regeneration is offline, and the binary stays dependency-free — it
+all compiles down to static tables. The generators pipe their output through
+`rustfmt`, so `cargo fmt` never makes them look stale.
+
+`src/renames.rs` is the deliberate exception: **hand-written**, not generated.
+A diff between two library releases says what *disappeared*, never what
+*replaced* it — the old→new mapping is read off the specialization chains, so
+it's judgement. It backs `--library-version` and `W314`: a name retired from the
+standard library is an error against the current version and only a warning
+against the one that defined it. Its `table_agrees_with_the_current_library`
+test fails if a regenerated `stdlib.rs` ever contradicts the table.
+
+Note what `--library-version` is *not*: resolution always runs against the
+2025-02 tables. The flag is a declaration that reclassifies the names in
+`renames.rs`, not a revalidation of the model against an older library.
+
+`tools/` and `spec/` are build-time only, so `Cargo.toml` keeps them out of the
+published crate (`exclude = ["/tools", "/spec"]`). Don't drop that `exclude`
+thinking it's an oversight, and don't delete the directories either — they are
+the provenance of `src/spec.rs` / `src/stdlib.rs` and the CI `generated` job
+runs `--check` against them.
 
 Key design choices worth knowing before touching this code:
 
@@ -50,6 +88,31 @@ Key design choices worth knowing before touching this code:
   two rule-name variants) in `rules::CATALOG` — that's what
   `--list-rules` prints, and what `main.rs`'s `--pedantic` help text must
   stay in sync with.
+- **Every rule declares its `Authority`** (`rules.rs`), and `--list-rules`
+  prints it. This is the conformance contract, so don't add a rule without
+  deciding which one it is:
+  - `Spec` — traceable to a metaclass/property in `SysML.json`, or to a named
+    rule in `SysMLValidator.xtend` / `UsageUtil.java`. Cite it in the
+    description (e.g. `validateObjectiveMembershipOwningType`).
+  - `Grammar` — from `SysML.xtext` / `KerML.xtext`. The metamodel describes
+    abstract syntax only, so concrete-notation rules can never be `Spec`.
+  - `Style` — house convention, no normative basis.
+
+  Authority is independent of `--pedantic`, which only filters the *noisy*
+  rules; a few quiet `Style` rules (E105, E218, W310) still run by default.
+- **Scope rules go through the metaclass hierarchy, never keyword substrings.**
+  The reference validator writes them as `instanceof` on the *owning* type, and
+  the subtyping matters: a `ConcernDefinition` **is** a `RequirementDefinition`,
+  a `SatisfyRequirementUsage` **is** a `RequirementUsage`. Use
+  `ast::metaclass_for()` + `spec::is_any_kind_of()` (see `check_owner` in
+  `rules.rs`). The old `pkw.contains("requirement")` heuristics got `satisfy`
+  bodies wrong for exactly this reason.
+- **`ast::metaclass_for()` is the one hand-written bridge** between keywords and
+  metaclasses — the JSON has no notion of textual syntax. Keep it in sync with
+  `SysML.xtext`; the `every_metaclass_exists` test rejects invented names.
+- **`verify` is the only scope rule that looks past the immediate parent.**
+  `UsageUtil.isLegalVerification` requires the owner to be the `objective` of a
+  verification case, so E236 checks parent *and* grandparent.
 - **`QName` conflates `.` and `::`.** Real SysML v2 grammar treats `::`
   (namespace qualification) and `.` (feature chaining) as distinct
   productions; this tool's `QName` (`ast.rs`) treats both as
@@ -110,7 +173,10 @@ actual diagnostic text/position was subtly wrong; eyeball it.
   `tests/fixtures/valid/` (must produce zero diagnostics), `invalid/`
   (named `<code>_<slug>.sysml`, e.g. `e230_satisfy_target_not_requirement.sysml`,
   must trigger exactly that code — pedantic-gated ones follow the same
-  naming, e.g. `w311_non_standard_keyword.sysml`), or `edge/` (edge cases:
+  naming, e.g. `w311_non_standard_keyword.sysml`, and so do flag-gated ones:
+  `w314_legacy_library_name.sysml` emits E200 by default and W314 only under
+  `--library-version 2024-11`, so its test asserts both modes), or `edge/`
+  (edge cases:
   empty file, CRLF, Unicode, documented limitations). Every fixture opens
   with a `//` comment stating the expected diagnostic.
 - **CLI tests**: one test per fixture in `tests/cli.rs`, using the
