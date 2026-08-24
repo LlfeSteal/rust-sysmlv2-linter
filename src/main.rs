@@ -11,6 +11,7 @@ mod json;
 mod lexer;
 mod model;
 mod parser;
+mod renames;
 mod rules;
 mod spec;
 mod stdlib;
@@ -21,7 +22,7 @@ use std::io::Write;
 use crate::ast::{NodeKind, QName, RefUse, Rel};
 use crate::diag::{Diagnostic, Severity};
 use crate::model::Model;
-use crate::rules::{Options, UnresolvedMode};
+use crate::rules::{LibraryVersion, Options, UnresolvedMode};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -47,6 +48,7 @@ struct Cli {
     stdin_name: String,
     pedantic: bool,
     unresolved: UnresolvedMode,
+    library_version: LibraryVersion,
     deny_warnings: bool,
     max_diags: usize,
     color: bool,
@@ -63,6 +65,7 @@ impl Default for Cli {
             stdin_name: "<stdin>.sysml".to_string(),
             pedantic: false,
             unresolved: UnresolvedMode::Error,
+            library_version: LibraryVersion::V2025_02,
             deny_warnings: false,
             max_diags: 500,
             color: false,
@@ -89,6 +92,11 @@ OPTIONS :
         --name <NOM>                   Nom de fichier affiché avec --stdin
         --pedantic                     Active les règles de style (W302/W306/W307/W309/W311/W312/W313)
         --unresolved <error|warn|off>  Sévérité des noms non résolus (défaut : error)
+        --library-version <2024-11|2025-02>
+                                       Version de la bibliothèque standard visée (défaut : 2025-02).
+                                       Déclaratif : reclasse en W314 les noms retirés depuis cette
+                                       version (ex. Connections::FlowConnection), sans revalider le
+                                       reste du modèle contre l'ancienne bibliothèque.
         --deny-warnings                Les avertissements deviennent bloquants
         --max-diags <N>                Nombre maximal de diagnostics (défaut : 500)
         --color                        Couleurs ANSI en sortie human
@@ -163,6 +171,19 @@ fn parse_args(args: Vec<String>) -> Result<Cli, String> {
                     "warn" => UnresolvedMode::Warn,
                     "off" => UnresolvedMode::Off,
                     other => return Err(format!("valeur --unresolved inconnue : {other}")),
+                };
+            }
+            "--library-version" => {
+                i += 1;
+                let v = args.get(i).ok_or("--library-version attend une valeur")?;
+                cli.library_version = match v.as_str() {
+                    "2024-11" => LibraryVersion::V2024_11,
+                    "2025-02" => LibraryVersion::V2025_02,
+                    other => {
+                        return Err(format!(
+                            "valeur --library-version inconnue : {other} (attendu : 2024-11 ou 2025-02)"
+                        ))
+                    }
                 };
             }
             "--deny-warnings" => cli.deny_warnings = true,
@@ -251,6 +272,7 @@ fn run() -> i32 {
     let opts = Options {
         pedantic: cli.pedantic,
         unresolved: cli.unresolved,
+        library: cli.library_version,
     };
     diags.extend(rules::check(&model, &opts));
 

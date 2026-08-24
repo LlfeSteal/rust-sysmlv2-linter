@@ -161,7 +161,9 @@ fn valid_redefinition_member_shorthand_is_clean() {
 
 #[test]
 fn valid_verify_in_verification_objective_is_clean() {
-    assert_ok(&format!("{VALID_DIR}verify_in_verification_objective.sysml"));
+    assert_ok(&format!(
+        "{VALID_DIR}verify_in_verification_objective.sysml"
+    ));
 }
 
 #[test]
@@ -720,6 +722,42 @@ fn cli_list_rules_declares_an_authority_per_rule() {
 
 /// Un nom retiré de la bibliothèque standard est une erreur pour la version
 /// courante, et seulement un avertissement pour la version qui le définissait.
+#[test]
+fn w314_legacy_library_name_depends_on_the_targeted_version() {
+    let path = format!("{INVALID_DIR}w314_legacy_library_name.sysml");
+
+    let (out, exit) = json(&path);
+    assert!(has_code(&out, "E200"), "sortie :\n{out}");
+    assert!(!has_code(&out, "W314"), "sortie :\n{out}");
+    assert_eq!(exit, 1);
+
+    let (out, exit) = json_with(&["--library-version", "2024-11"], &path);
+    assert!(has_code(&out, "W314"), "sortie :\n{out}");
+    assert!(!has_code(&out, "E200"), "sortie :\n{out}");
+    assert_eq!(exit, 0, "sortie :\n{out}");
+}
+
+/// Le message par défaut doit nommer le remplacement *et* le drapeau : c'est
+/// par là qu'on découvre qu'une autre version du standard existe.
+#[test]
+fn w314_default_message_points_at_the_replacement_and_the_flag() {
+    let out = run(&[&format!("{INVALID_DIR}w314_legacy_library_name.sysml")]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("Flows::Flow"), "sortie :\n{stdout}");
+    assert!(stdout.contains("--library-version"), "sortie :\n{stdout}");
+}
+
+#[test]
+fn cli_library_version_rejects_an_unknown_value() {
+    let out = run(&[
+        "--library-version",
+        "1999-01",
+        &format!("{VALID_DIR}basics.sysml"),
+    ]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--library-version"));
+}
+
 #[test]
 fn cli_help_flag_exits_zero() {
     let out = run(&["--help"]);

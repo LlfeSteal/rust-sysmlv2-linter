@@ -11,6 +11,7 @@ use crate::ast::{NodeKind, QName, RefCtx, RelKind};
 use crate::diag::{Diagnostic, Span};
 use crate::model::Model;
 use crate::parser::is_legacy_kw;
+use crate::renames;
 use crate::spec;
 use crate::stdlib;
 
@@ -85,6 +86,7 @@ pub const CATALOG: &[(&str, &str, Authority, &str)] = &[
     ("W311", "non-standard-keyword", Authority::Style, "Mot-clé absent de la grammaire SysML v2 (`readonly`, `composite`, `portion` employés seuls) (--pedantic)."),
     ("W312", "kerml-only-keyword", Authority::Style, "Mot-clé KerML absent de la surface SysML v2 (`feature`, `namespace`, `specialization`, `subclassification`) (--pedantic)."),
     ("W313", "public-import-at-top-level", Authority::Style, "`import` sans paquet englobant marqué `public`/`protected` au lieu de `private` (--pedantic)."),
+    ("W314", "legacy-library-name", Authority::Spec, "Nom retiré de la bibliothèque standard depuis la version visée (--library-version)."),
 ];
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum UnresolvedMode {
@@ -93,9 +95,22 @@ pub enum UnresolvedMode {
     Off,
 }
 
+/// Version de la bibliothèque standard que le modèle est censé viser.
+///
+/// **Déclaration, pas validation** : la résolution s'appuie toujours sur les
+/// tables de `stdlib.rs` (2025-02). Choisir une version antérieure reclasse
+/// seulement les noms connus de `renames.rs` en avertissement, au lieu de les
+/// signaler comme introuvables.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LibraryVersion {
+    V2024_11,
+    V2025_02,
+}
+
 pub struct Options {
     pub pedantic: bool,
     pub unresolved: UnresolvedMode,
+    pub library: LibraryVersion,
 }
 
 impl Default for Options {
@@ -103,6 +118,7 @@ impl Default for Options {
         Options {
             pedantic: false,
             unresolved: UnresolvedMode::Error,
+            library: LibraryVersion::V2025_02,
         }
     }
 }
@@ -357,7 +373,6 @@ fn build_ctx(m: &Model) -> Ctx {
                 // basculer tous les E200 du fichier en W200.
                 let mut r = Resolver::new(m);
                 if !matches!(r.resolve(s.id, imp), Res::Local(_)) {
-
                     opaque_wildcard = true;
                 }
             }
@@ -898,6 +913,20 @@ fn ctx_label(ctx: RefCtx) -> &'static str {
     }
 }
 
+/// Conseil de migration pour un nom retiré de la bibliothèque standard.
+fn rename_migration_hint(r: &renames::Rename) -> String {
+    match r.new {
+        Some((pkg, name)) => format!(
+            "pour viser la version courante : remplace `{}::{}` par `{pkg}::{name}`",
+            r.old_pkg, r.old
+        ),
+        None => format!(
+            "`{}::{}` n'a pas d'équivalent dans les versions ultérieures",
+            r.old_pkg, r.old
+        ),
+    }
+}
+
 /// Suggestion « vouliez-vous dire ? » par distance d'édition.
 fn nearest_name(m: &Model, scope: usize, target: &str) -> Option<String> {
     let mut best: Option<(usize, String)> = None;
@@ -1081,7 +1110,6 @@ fn report_resolution(
                 // ne faut donc pas réclamer un import de plus.
                 let exposing = stdlib::exposing_packages(&name);
                 if !exposing.iter().any(|p| ctx.imported_roots.contains(*p)) {
-
                     out.push(
                         Diagnostic::warn(
                             "W301",
@@ -1102,6 +1130,34 @@ fn report_resolution(
                 Some(p) => (p.text.clone(), p.span),
                 None => (q.text(), q.span),
             };
+
+            // Nom retiré de la bibliothèque standard entre deux versions. Si le
+            // modèle déclare viser la version antérieure, il a raison de
+            // l'employer : on le signale, sans le rejeter.
+            let rename = renames::lookup(&bad);
+            if let Some(r) = rename {
+                if opts.library == LibraryVersion::V2024_11 {
+                    out.push(
+                        Diagnostic::warn(
+                            "W314",
+                            "legacy-library-name",
+                            span,
+                            format!(
+                                "`{}` appartient à la bibliothèque SysML v2 {} ; {}",
+                                r.old,
+                                renames::LEGACY_VERSION,
+                                match r.new {
+                                    Some((pkg, name)) =>
+                                        format!("renommé `{pkg}::{name}` en {}", r.removed_in),
+                                    None => format!("supprimé en {}", r.removed_in),
+                                }
+                            ),
+                        )
+                        .hint(rename_migration_hint(r)),
+                    );
+                    return;
+                }
+            }
 
             // Une valeur d'expression est bien plus sujette aux faux positifs :
             // on ne la signale qu'en avertissement.
@@ -1138,7 +1194,22 @@ fn report_resolution(
                 Diagnostic::warn("W200", "unresolved-name", span, msg)
             };
 
-            if let Some(sugg) = nearest_name(m, scope, &bad) {
+            if let Some(r) = rename {
+                // Correspondance exacte : elle prime sur les suggestions par
+                // proximité orthographique qui suivent, qui ne sont que des
+                // conjectures.
+                d = d.hint(format!(
+                    "`{}` (`{}`) a été {} dans la version {} du standard ; si ce modèle vise une version antérieure, utilise `--library-version {}`",
+                    r.old,
+                    r.old_pkg,
+                    match r.new {
+                        Some((pkg, name)) => format!("renommé `{pkg}::{name}`"),
+                        None => "supprimé, sans remplacement direct,".to_string(),
+                    },
+                    r.removed_in,
+                    renames::LEGACY_VERSION,
+                ));
+            } else if let Some(sugg) = nearest_name(m, scope, &bad) {
                 d = d.hint(format!("vouliez-vous dire `{sugg}` ?"));
             } else if let Some((sugg, pkg)) = nearest_library_name(&bad) {
                 d = d.hint(format!(
@@ -1148,7 +1219,9 @@ fn report_resolution(
                 // Tous les imports du fichier sont des paquets standard dont on
                 // connaît le contenu exact : on peut affirmer que le nom n'y est
                 // pas, plutôt que de supposer un paquet non fourni.
-                d = d.hint(format!("`{bad}` n'appartient à aucun paquet standard ; {pkgs}"));
+                d = d.hint(format!(
+                    "`{bad}` n'appartient à aucun paquet standard ; {pkgs}"
+                ));
             } else if ctx.opaque_wildcard {
                 d = d.hint(
                     "aucune déclaration correspondante dans les fichiers analysés ; \
@@ -1970,12 +2043,72 @@ mod tests {
     }
 
     #[test]
-    fn unresolved_name_states_that_known_imports_do_not_provide_it() {
-        // `FlowConnection` n'existe nulle part dans la bibliothèque : le type
-        // de flux standard est `Flows::Flow`. Comme tous les imports sont des
-        // paquets standard au contenu connu, on peut l'affirmer.
+    fn renamed_library_name_is_an_error_that_names_its_replacement() {
         let d = analyze(
             "package P { private import Connections::*; part def A { attribute f : FlowConnection; } }",
+        );
+        assert!(has(&d, "E200"), "{d:?}");
+        assert!(!has(&d, "W314"), "{d:?}");
+        let hint = d
+            .iter()
+            .find(|x| x.code == "E200")
+            .and_then(|x| x.hint.clone())
+            .unwrap_or_default();
+        assert!(hint.contains("Flows::Flow"), "{hint}");
+        assert!(hint.contains("2025-02"), "{hint}");
+        assert!(hint.contains("--library-version"), "{hint}");
+    }
+
+    #[test]
+    fn renamed_library_name_is_only_a_warning_for_the_older_library() {
+        let o = Options {
+            library: LibraryVersion::V2024_11,
+            ..Default::default()
+        };
+        let d = analyze_opts(
+            "package P { private import Connections::*; part def A { attribute f : FlowConnection; } }",
+            &o,
+        );
+        assert!(has(&d, "W314"), "{d:?}");
+        assert!(!has(&d, "E200"), "{d:?}");
+    }
+
+    #[test]
+    fn library_version_does_not_excuse_names_that_were_never_standard() {
+        // Le drapeau ne reclasse que les noms connus de `renames.rs` : il ne
+        // doit pas transformer toute faute de frappe en avertissement.
+        let o = Options {
+            library: LibraryVersion::V2024_11,
+            ..Default::default()
+        };
+        let d = analyze_opts("package P { part def A { attribute f : PasUnType; } }", &o);
+        assert!(has(&d, "E200"), "{d:?}");
+        assert!(!has(&d, "W314"), "{d:?}");
+    }
+
+    #[test]
+    fn unresolved_off_also_suppresses_the_legacy_warning() {
+        let o = Options {
+            library: LibraryVersion::V2024_11,
+            unresolved: UnresolvedMode::Off,
+            ..Default::default()
+        };
+        let d = analyze_opts(
+            "package P { private import Connections::*; part def A { attribute f : FlowConnection; } }",
+            &o,
+        );
+        assert!(!has(&d, "W314"), "{d:?}");
+    }
+
+    #[test]
+    fn unresolved_name_states_that_known_imports_do_not_provide_it() {
+        // Nom absent de la bibliothèque, trop loin de tout nom réel pour une
+        // suggestion et hors table de renommages : comme tous les imports sont
+        // des paquets standard au contenu connu, on peut l'affirmer.
+        // (Ne pas prendre `FlowConnection` ici : il a désormais son propre
+        // message, plus précis — voir `renamed_library_name_*`.)
+        let d = analyze(
+            "package P { private import Connections::*; part def A { attribute f : ZzzWidgetBus; } }",
         );
         let hint = d
             .iter()
